@@ -17,19 +17,19 @@ library(shinycssloaders)
 
 # Load the data
 
-# list_ggraph_all <- readRDS(here("data/graph_all_period.rds"))
-# list_ggraph_10 <- readRDS(here("data/list_ggraph_15.rds"))
-# 
-# corpus_all <- readRDS(here("data/corpus_all_periods.rds")) %>% rename(n_citations = n)
-# corpus_10 <- readRDS(here("data/corpus_15.rds")) %>% rename(n_citations = n)
+list_ggraph_all <- readRDS(here("data/graph_all_period.rds"))
+list_ggraph_10 <- readRDS(here("data/list_ggraph_15.rds"))
+
+corpus_all <- readRDS(here("data/corpus_all_periods.rds")) %>% rename(n_citations = n)
+corpus_10 <- readRDS(here("data/corpus_15.rds")) %>% rename(n_citations = n)
 
 # Load the data
 
-list_ggraph_all <- readRDS(here("fama_1970/app/data/graph_all_period.rds"))
-list_ggraph_10 <- readRDS(here("fama_1970/app/data/list_ggraph_15.rds"))
+#list_ggraph_all <- readRDS(here("fama_1970/app/data/graph_all_period.rds"))
+#list_ggraph_10 <- readRDS(here("fama_1970/app/data/list_ggraph_15.rds"))
 
-corpus_all <- readRDS(here("fama_1970/app/data/corpus_all_periods.rds")) %>% rename(n_citations = n)
-corpus_10 <- readRDS(here("fama_1970/app/data/corpus_15.rds")) %>% rename(n_citations = n)
+#corpus_all <- readRDS(here("fama_1970/app/data/corpus_all_periods.rds")) %>% rename(n_citations = n)
+#corpus_10 <- readRDS(here("fama_1970/app/data/corpus_15.rds")) %>% rename(n_citations = n)
 
 
 
@@ -40,7 +40,7 @@ corpus_10 <- readRDS(here("fama_1970/app/data/corpus_15.rds")) %>% rename(n_cita
 introduction_text <- paste(
   "This dashboard visualizes the static and dynamic networks of research papers citing Fama (1970).",
   "See the paper for the full description of the methodology. The code is available on",
-  "<a href='https://github.com/tdelcey/fama_1970'>GitHub</a>",
+  "<a href='https://github.com/tdelcey/research/tree/main/fama_1970'>GitHub</a>",
   "<br><br>",
   "The networks are interactive: click on a nodes or a cluster in the graph to see its metadata.",
   "<br><br>"
