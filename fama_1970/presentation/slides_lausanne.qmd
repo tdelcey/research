@@ -1,0 +1,791 @@
+---
+title: "Spreading the financial approach" 
+subtitle: "A quantitative analysis of Fama (1970)"
+author: 
+  - name: "Thomas Delcey"
+    email: "thomas.delcey@u-bourgogne.fr"
+    affiliation:
+     - name: "Université de Bourgogne"
+format:
+  revealjs:
+    # figures 
+    fig-cap-location: bottom
+    width: 1200
+    slide-number: true
+    transition: slide 
+    theme: simple
+    css: "styles_slides.css"
+    # embed-resources: true
+    chalkboard: true
+bibliography: "references.bib"
+---
+
+```{r}
+#| echo: false
+#| warning: false
+
+source(here::here("paths_and_packages.R"))
+
+```
+
+## {#full-page}
+
+:::: {.columns}
+
+::: column
+
+![Challenger, January 28th 1986](image/challenger.jpg){height=10cm}
+::: 
+
+::: {.column}
+
+![@maloney2003stock](image/maloney_mulherin.png){height=10cm}
+::: 
+::::
+
+##  
+
+:::: {.columns}
+
+::: {.column width="60%"}
+![Introduction of @fama_efficient_1970[383]](image/fama_1970.png){height=11cm}
+:::
+
+::: {.column width="40%"}
+
+![Eugene Fama](image/fama_young.png){height=11cm}
+:::
+::::
+
+
+::: notes 
+- The article is a cornerstone in the financial literature ;
+- It introduces the concept of market efficiency ;
+- 3 forms ; 
+- An empirical hypothesis ;
+::: 
+
+
+## 
+
+::: {.columns}
+
+::: {.column width="60%"}
+![From @shiller1981stock[422]](image/shiller1981.png){height=11cm}
+::: 
+
+::: {.column width="40%"}
+![Robert Shiller](image/shiller.jpg){height=11cm}
+:::
+:::
+
+
+## 
+
+::: {.image-grid}
+
+![](image/forbes.png){.grid-item}
+![](image/nyt.png){.grid-item}
+
+
+![](image/institutional_investor.png){.grid-item}
+![](image/ft.png){.grid-item}
+
+![](image/guardian.png){.grid-item}
+![](image/slate.png){.grid-item}
+
+:::
+
+> I don't know if Fama ever states his theory really clearly, if he did it might sound a little odd ... I shouldn’t try to psychoanalyse Eugene Fama but I know that he is committed… to a libertarian philosophy, teaching at the University of Chicago where Milton Friedman once lived. [Shiller in @guardian_2013] 
+
+
+## 
+
+> The efficient-markets theory did not become famous because it is complex. The greatness of Fama’s contribution lies in the fact that efficient-markets became the organizing principle for decades of empirical work in financial economics ... When you think of Fama, don’t think of Einstein ... Think of Darwin, who also saw that a simple principle—evolution by natural selection—organized and gave purpose to a vast collection of facts."
+
+::: justifyright
+John @cochrane2013eugene
+::: 
+
+
+## 
+
+
+>  Si l’efficience des marchés, au sens du Fama, n’avait été qu’une proposition empirique, c’est-à-dire la formulation d’une propriété contingente, elle n’aurait certainement pas eu la postérité qu’elle a connue. Ce qui a fait de l’hypothèse d’efficience un outil si novateur et si abondamment utilisé n’est pas ce qu’elle dit sur les prix contingents observés sur un marché, mais l’interprétation des prix qu’elle permet. 
+
+::: justifyright
+Guillaume @vuillemey2013statut[111]
+::: 
+
+
+<!-- > If market efficiency, in Fama’s sense, had been only an empirical proposition, i.e. the formulation of a contingent property, it would certainly not have had the posterity it has had. What has made the efficient market hypothesis such an innovative and widely used tool is not what it states about the contingent prices observed in a market, but the interpretation of the prices it allows. -->
+
+
+## This paper  
+
+- **Object:** quantitatively studying the influence of Fama (1970) ; 
+
+. . . 
+
+- **Questions:** 
+
+  1. What are the research programs influenced by Fama (1970) ?
+  2. How the efficient market hypothesis is used by those research programs.
+  
+
+## Data  
+
+- **Bibliometric data:** a corpus of documents citing Fama (1970) with their metadata (title, journal, references, etc.) ;
+  - I use the Web of Science index ; 
+
+. . . 
+
+  - **Purpose**: what are the research programs influenced by Fama (1970) ?
+  - **Hypothesis:** a citation reflect an influence between the cited and the citing document ;
+
+## Data 
+
+- The corpus is extended with **textual data:** the paragraph in which Fama (1970) is cited ; 
+  - Paragraphs are extracted using `GROBID`, a machine learning model for parsing scientific documents ;
+
+. . . 
+
+  - **Purpose**: How the efficient market hypothesis is used in the literature ?
+  - **Hypothesis**: the paragraphs are a relevant unit of the citation context ;
+
+
+
+
+
+
+## Bibiliometric data 
+
+![Distribution of documents citing Fama (1970) using the Web of Science Citation Index](image/reviews_citations_all.jpg){#fig-all_distribution fig-align="center"}
+
+## Disciplines 
+
+![Distribution of the corpus and the disciplines of documents (in % of total)](image/documents_field.jpg){#fig-distribution fig-align="center"}
+
+## Bibliometric coupling network  
+
+
+```{dot}
+
+graph {
+  rankdir=LR;
+  
+  # Les deux textes du corpus
+  A [label="Texte A"];
+  B [label="Texte B"];
+  C [label="Texte C"]
+  
+  # Les textes cités
+  X [label="Reference 1"];
+  Y [label="Reference 2"];
+  Z [label="Reference 3"];
+  
+  # Couplage bibliographique
+  A -- X;
+  A -- Y;
+  B -- X;
+  B -- Y;
+  B -- Z;
+  C -- Z;
+}
+```
+
+Le nombre de références en commun entre deux textes est un indicateur de leur proximité intellectuelle. 
+
+
+## Measuring similarity  
+
+:::: columns
+
+::: {.column width="40%"}
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-asp: 1
+
+
+library(tidygraph)
+library(ggraph)
+library(ggplot2)
+
+
+# Définir les liens entre les textes et les poids de proximité
+edges <- data.frame(
+  from = c("A", "B", "B"),
+  to = c("B", "C", "A"),
+  weight = c(2, 1, 2)  # Plus fort entre A et B
+)
+
+# Créer l'objet graphe avec tidygraph
+graph <- tbl_graph(edges = edges, directed = FALSE)
+
+
+# Visualiser le graphe
+ggraph(graph, layout = "fr") +  
+  geom_edge_link(alpha = 0.5, show.legend = FALSE) +
+  geom_node_point(size = 20, color = "black", fill = "white", shape = 21, stroke = 1.5) + 
+  geom_node_text(aes(label = name), size = 5) + # Étiquettes des nœuds
+  theme_void()  
+
+
+``` 
+::: 
+
+::: {.column width="60%"}
+- A and B has a stronger coupling _similarity_ than B and C ;
+- Various ways to measure similarity ; 
+- Backbone extraction [@neal2014backbone] ;
+- Spacialization [@jacomy2014forceatlas2].
+::: 
+
+::::
+
+
+## Clustering 
+
+:::: columns
+::: {.column width="40%"}
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-asp: 1
+
+
+library(tidygraph)
+library(tidyverse)
+library(ggraph)
+library(ggplot2)
+
+# Définir les liens pour former deux communautés bien séparées
+edges <- tribble(
+  ~from, ~to, ~weight,
+  "A", "B", 1,
+  "A", "C", 1,
+  "A", "D", 1,
+  "B", "C", 1,
+  "B", "D", 1,
+  "C", "D", 1,
+  "D", "E", 1,
+  "E", "F", 1,
+  "E", "H", 1,
+  "F", "G", 1,
+  "G", "H", 1,
+  "H", "G", 1,
+  "H", "F", 1
+)
+
+
+# Créer les nœuds et assigner manuellement les communautés
+
+nodes <- tribble(
+  ~name, ~community,
+  "A", "Group 1",
+  "B", "Group 1",
+  "C", "Group 1",
+  "D", "Group 1",
+  "E", "Group 2",
+  "F", "Group 2",
+  "G", "Group 2",
+  "H", "Group 2"
+)
+
+# Créer le graphe
+graph <- tbl_graph(nodes = nodes, edges = edges, directed = FALSE) %>%
+  mutate(community = group_leiden(resolution = 0.1))  # Paramètre ajusté pour obtenir 2 communautés
+
+# Visualiser le graphe
+ggraph(graph, layout = "fr") +  
+  geom_edge_link(alpha = 0.5, color = "grey", show.legend = FALSE) +
+  geom_node_point(aes(fill = as.factor(community)), size = 20, pch = 21, show.legend = FALSE) + 
+  geom_node_text(aes(label = name), size = 7) +  # Étiquettes des nœuds
+  scale_fill_manual(values = c("tomato", "steelblue")) +  # Couleurs pour chaque groupe
+  theme_void() 
+
+```
+::: 
+
+::: {.column width="60%"}
+- Clusters are group of nodes more connected to each other than to the rest of the network [@traag_louvain_2019];
+- I interpret clusters as **research programs**: 
+  - $\neq$ schools of thought ;
+  - $\neq$ communities. 
+
+::: 
+
+:::: 
+
+
+
+## {fullscreen=true}
+
+![[Coupling network](https://thomasdelcey.shinyapps.io/fama_1970_dashboard/) using the force atlas layout (1970-1999).
+](image/coupling.jpg){#fig-coupling}
+
+## {fullscreen=true}
+
+:::: {.columns}
+
+::: {.column width="65%"}
+![Coupling network using the force atlas layout (1970-1999).](image/coupling.jpg){#fig-coupling}
+::: 
+
+::: {.column width="35%"}
+- Trois **metaclusters**: 
+  1. Financial economics ; 
+  2. Exploring markets ;
+  3. Exploring disciplines 
+  
+::: 
+::::
+
+::: notes
+- start with inefficiencies 
+- an important and central communities but clearly not the end of the story 
+:::
+
+
+## Information 
+
+@grossman_impossibility_1980's paradox: 
+
+- If market prices reflect all available information: 
+- Then traders cannot profit from acquiring information ;
+- Then, there is no incentive to acquire information ;
+- Then market prices cannot reflect all available information.
+
+. . . 
+
+- **Economics of information**: how information is generated and processed in markets.
+
+
+## Trading 
+
+> The usual economic view of markets is as a place where buyers and sellers come together and trade at a common price, the price at which supply equals demand. Securities exchanges are often singled out as excellent examples of markets that operate this way. In fact, however, trading on exchanges takes place over time, and some institutional arrangements are necessary to help match buyers and sellers whose orders arrive at different times. 
+
+::: alignright
+@glosten1985bid[71]
+::: 
+
+. . . 
+
+- **Market microstructure**: How trading rules affect the price formation.
+
+::: notes
+- the cost of trading ;
+- the price formation ;
+- the liquidity of the market.
+- the information flow and transparency.
+:::
+
+
+## Market efficiency as the starting point 
+
+> [T]he equilibrium price vector corresponds to some aggregate of all the individual pieces of information. Then the question arises how this aggregate is formed. 
+
+::: justifyright
+@hellwig1980aggregation[477]
+:::
+
+> Much of the early auction research focused on questions related to the information content and the level of prices.
+
+::: justifyright
+[@milgrom2021auction: 1384-1385]
+:::
+
+::: notes
+- the statistical behavior of asset prices was the final outcome of a still poorly understood process that had to be unraveled.
+::: 
+
+## Exploring new markets 
+
+![Coupling network using the force atlas layout (1970-1999).](image/coupling.jpg){#fig-coupling}
+
+## Exploring new markets
+
+- Market efficiency's framework is applied to new datasets and tested ;
+  - Monetary markets, agricultural market, exchanges, betting markets. 
+
+. . .  
+
+- An intellectual affinity with agricultural markets and macroeconomists ; 
+  - The information in price [@fama_short-term_1975] ;
+  - Event study [@plosser1982government].
+
+## Exploring new disciplines 
+ 
+![Coupling network using the force atlas layout (1970-1999).](image/coupling.jpg){#fig-coupling}
+
+
+## Exploring new discplines 
+
+- Market efficiency is not corroborated but _assumed_ to be true ; 
+
+. . . 
+
+- Spreading a **financial approach** characterized by arbitrage and market efficiency arguments and the use of quantitative methods ; 
+
+. . . 
+
+- A financial approach advocated by Fama's students at Chicago, including Jeffrey F. Jaffe, Ray Ball, Philip Brown, Ross Watts, George J. Benston, James Ellert, and William Schwert. 
+
+## Management 
+
+- Using even study to make positive evaluation of a policy ; 
+  - What is the effect of the earning announcement ?
+  - What is the value of a brand ? 
+
+
+> Most of the available empirical research on changes in accounting techniques attempts to establish reasons for, rather than consequences of, accounting changes.
+
+::: justifyright
+Ray @ball1972some[4]
+:::
+
+
+## Law 
+
+> “[market efficiency] is the context in which serious discussion of the regulation of financial markets takes place” 
+
+::: justifyright
+@gilson1984mechanisms[550]
+:::
+
+. . . 
+
+> “The positive analysis of government regulation”
+
+::: justifyright
+@schwert1981using[81]
+:::
+
+
+## The disclosure policy 
+
+- **Public disclosure:** the Act of 1933 and 1934 required large traded companies to disclose their financial information ; 
+
+. . .
+
+- George J. @benston1973required (Chicago's Ph.D. 1963):
+
+> The data presented above, that the disclosure required by the '34 Act had no measurable effect on the residual market prices of companies that did and did not
+disclose their sales, are consistent with the hypothesis that the market was efficient before the legislation was enacted, at least with respect to the financial data.
+
+## SEC and market efficiency
+
+> To the extent that the market acts efficiently, and this information is adequately
+reflected in the price of a registrant's outstanding securities, the SEC concludes there seems little need to reiterate this information in a prospectus in the context of a distribution. 
+
+::: justifyright
+@sec1980sec[33]
+:::
+
+## Fraud 
+
+- Issue: how to prove that a false statements was "important" ;
+
+. . . 
+
+> Suppose that an investor, after reading a false statement, believes that a particular investment offers a superior rate of return and invests accordingly. The market, however, ignores the false statement so that it has no effect on the market price. [...] The law has never compensated for injury where the so-called reasonable man—in this case the market—has not been misled. 
+
+::: justifyright
+@fischel1982use[15]
+:::
+
+
+## Citation intent 
+
+:::: {.columns}
+
+::: {.column width="50%"}
+![Coupling network using the force atlas layout (1970-1999).](image/coupling.jpg){#fig-coupling}
+::: 
+
+::: {.column width="50%"}
+- **H-1**: peripheral research programs are more likely to criticize Fama (1970) ;
+- **H-2**: peripheral research programs are more likely to uncritically use Fama (1970) ;
+::: 
+::::
+ 
+## Classification task 
+
+- **criticizing:**  the paragraph is refuting or contrasting Fama's argument with opposite contributions. 
+
+- **using:** the paragraph is uncritically citing Fama (1970): assuming market efficiency, using a concept from Fama (1970) or applying a method. 
+
+## {.scrollable}
+
+```{r}
+#| tbl-cap: "Exemples of paragraphs" 
+#| label: tbl-paragraphs
+#| echo: false
+#| warning: false
+
+intent_df <- xlsx::read.xlsx(here(clean_data_path, "list_paragraphs_to_clean.xlsx"), sheetIndex = 1) 
+
+intent_df %>%
+  select(id, intent, text, first_author, year) %>%
+  filter(id %in% c("42399161", "14168186")) %>%
+  select(-id) %>%
+  reframe(document = str_c(str_to_title(first_author), " (", year, ")"),
+          text,
+          intent) %>%
+  kbl(booktabs = T, escape = F) %>%
+  kableExtra::column_spec(2, width = "30em") %>% 
+  # reduce size text 
+  kableExtra::kable_styling(font_size = 17) 
+```
+
+
+## Textual data 
+
+![Distribution and intent of paragraphs.](image/intent_distribution.jpg){#fig-intent}
+
+
+
+## {.scrollable}
+
+```{r}
+#| fig-cap: "Logit model using metacluster, field, and year as predictor of the citation intent"
+#| label: fig-logit_metacluster
+#| echo: false
+#| warning: false
+
+list_model <- readRDS(here(clean_data_path, "logit_cluster.rds"))
+
+modelsummary::modelplot(list_model[[1]],
+                          coef_rename = c("meta_clustersExploring field" = "[Meta cluster] Exploring field",
+                                          "meta_clustersExploring market" = "[Meta cluster] Exploring market",
+                                          "fieldLaw" = "[Field] Law",
+                                          "fieldManagement" = "[Field] Management",
+                                          "fieldEconomics" = "[Field] Economics",
+                                          "fieldOther" = "[Field] Other",
+                                          "year" = "Year")) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+
+```
+
+## {fullscreen=true}
+
+:::: {.columns}
+
+::: {.column width="65%"}
+![Coupling network using the force atlas layout (1970-1999).](image/coupling.jpg){#fig-coupling}
+::: 
+
+::: {.column width="35%"}
+- Centrality measures ;
+  - Betweenness ;
+  - Closeness ;
+  - Degree ;
+  - Eigencentrality ;
+
+::: 
+::::
+
+::: notes
+- Betweenness: the number of shortest paths that pass through a node ;
+- Closeness: the average distance between a node and all other nodes ;
+- Degree: the number of edges connected to a node ;
+- Eigencentrality: the importance of a node in a network.
+
+::: 
+
+
+## Predict with centrality measures 
+
+```{r}
+#| fig-cap: "Logit model using centrality"
+#| label: fig-logit_centrality
+#| echo: false
+#| warning: false
+
+
+centrality <- readRDS(here(clean_data_path, "logit_centrality.rds"))
+
+modelsummary::modelplot(centrality) + geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+```
+
+
+## Conclusion 
+
+- While the efficient market hypothesis is refuted in the core finance, it is used as a **premise** in other fields ;
+
+. . . 
+
+- Fama (1970) helps in spreading a **financial way of thinking** ;
+  - Price as entity conveying information ; 
+  - Arbitrages as the main mechanism of price adjustment ;
+
+- Market efficiency gained popularity as a **style of reasoning** rather than a hypothesis ;
+
+
+# Appendix 
+
+## 
+
+```{r}
+#| fig-cap: "Logit model using cluster and year as predictor of the citation intent"
+#| label: fig-logit_cluster
+#| echo: false
+#| warning: false
+
+list_model <- readRDS(here(clean_data_path, "logit_cluster.rds"))
+
+modelsummary::modelplot(list_model[[2]],
+                          coef_omit = "cluster_labelVaria",
+                          coef_rename = c(
+                                          "year" = "Year",
+                                          "cluster_labelCommodities" = "Commodities",
+                                          "cluster_labelForeign" = "Foreign",
+                                          "cluster_labelMoney" = "Money",
+                                          "cluster_labelBetting" = "Betting",
+                                          "cluster_labelAccounting" = "Accounting",
+                                          "cluster_labelMarketing" = "Marketing",
+                                          "cluster_labelLaw" = "Law",
+                                          "cluster_labelHouse" = "House",
+                                          "cluster_labelManagement" = "Management",
+                                          "cluster_labelInformation" = "Information",
+                                          "cluster_labelTrading" = "Trading",
+                                          "cluster_labelPerformance" = "Performance",
+                                          "fieldLaw" = "[Field] Law",
+                                          "fieldManagement" = "[Field] Management",
+                                          "fieldEconomics" = "[Field] Economics",
+                                          "fieldOther" = "[Field] Other")) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+
+```
+
+## Metacluster regression table {.scrollable}
+
+```{r}
+#| tbl-cap: "Logit model using metacluster and year as predictor of the citation intent"
+#| label: tbl-logit_metacluster
+#| echo: false
+#| warning: false
+
+list_model <- readRDS(here(clean_data_path, "logit_cluster.rds"))
+
+tidy(list_model[[1]], labels = custom_labels) %>%
+  mutate(term = str_replace_all(term, "^meta_clusters", "[Meta clusters] "),
+         term = str_replace_all(term, "^field", "[Field] "),
+         term = ifelse(term == "year", "Year", term)) %>% 
+  select(-statistic) %>%
+  tinytable::tt() %>% 
+  tinytable::style_tt(fontsize = 0.5)
+
+```
+
+## Cluster regression table {.scrollable}
+
+```{r}
+#| tbl-cap: "Logit model using cluster and year as predictor of the citation intent"
+#| label: tbl-logit_cluster
+#| echo: false
+#| warning: false
+
+list_model <- readRDS(here(clean_data_path, "logit_cluster.rds"))
+
+
+tidy(list_model[[2]], labels = custom_labels) %>%
+  mutate(term = str_replace_all(term, "^cluster_label", "[Cluster] "),
+         term = str_replace_all(term, "^field", "[Field] "),
+         term = ifelse(term == "year", "Year", term)) %>% 
+  select(-statistic) %>%
+  tinytable::tt() %>% 
+  tinytable::style_tt(fontsize = 0.5)
+
+```
+
+## Centrality regression table {.scrollable}
+
+```{r}
+#| tbl-cap: "Logit model using centrality"
+#| tbl-cap-location: bottom
+#| label: tbl-logit_cenrality 
+#| echo: false
+#| warning: false
+
+
+modelsummary::modelsummary(centrality, 
+                           statistic = c("std.error", "p.value"),
+                           gof_map = "none",
+                           output = "tinytable")  %>% 
+ tinytable::style_tt(fontsize = 0.5)
+```
+
+
+
+## Definition of a bipartite network
+
+- Consider a bipartite network linking documents and references. Let $B$ be a $d \times r$ incidence matrix, where $d$ is the number of documents and $r$ is the number of references. $B_{ik} = 1$ if document $i$ cites reference $k$, otherwise $B_{ik} = 0$. 
+  - The sum of a row, $D_k = \sum_{i=1}^d B_{ik}$, represents the number of documents citing a reference. 
+  - The sum of a line, $R_i = \sum_{k=1}^r B_{ik}$ represents the number of references in a document.
+
+## The backbone of a bipartite network
+
+- Let $P$ denote the projection of the bipartite network $B$ onto a bibliographic coupling. $P$ is a $d \times d$ matrix defined as $B \times B^T$. $P_{ij}$ represents the number of references shared between documents $i$ and $j$. 
+
+- The **backbone** of the network $P$ is denoted as $P'$. $P'$ is a $d \times d$ matrix where $P'_{ij} = 1$ if document $i$ and document $j$ are significantly linked, otherwise $P'_{ij} = 0$.
+
+## The Stochastic Degree Sequence Model 
+
+- The model aims to generate bipartite networks $\mathcal{B}^*$ that share a set of properties with the network $B$.
+  - $P^*_{ij}$ be a random variable representing the number of references shared between documents $i$ and $j$ in a generated network $B^* \in \mathcal{B}^*$. 
+
+- The significance of a link between two observed documents is determined by comparing $P^*_{ij}$ and $P_{ij}$:
+
+$$P'_{ij} = \begin{cases} 1 & \text{if } \Pr(P^*_{ij} \geq P_{ij}) < \frac{\alpha}{2}, \\ 0 & \text{otherwise.} \end{cases} $$
+
+
+## Modularity: the expected number of edges
+
+Given two nodes $v$ and $w$, the difference between the observed and expected number of edges between them is defined as:
+
+$$A_{vw} - \frac{k_v k_w}{2m} $$
+
+where $A_{vw}$ is the element of the adjacency matrix of the network, $k_v$ and $k_w$ are the degree of node $v$ and $w$, $m$ is the number of edges in the network. $\frac{k_v k_w}{2m}$ is the expected number of edges between $v$ and $w$ if the edges were distributed at random. 
+
+
+## Modularity: formula {.scrollable}
+
+Given two nodes $v$ and $w$, the modularity $Q \in [-1/2, 1]$ is defined as:
+
+$$Q = \frac{1}{2m} \sum_{v=1}^N\sum_{w=1}^N \left[ A_{vw} - \frac{k_v k_w}{2m} \right] \delta(c_v, c_w)$$
+
+- $N$ is the number of nodes ;
+- $m$ is the number of edges in the network ;
+- $A_{vw}$ is the element of the adjacency matrix of the network ;
+- $k_v$ and $k_w$ are the degree of node $v$ and $w$;
+- $\delta(c_v, c_w)$ is the Kronecker delta function that is 1 if $c_v = c_w$ and 0 otherwise. 
+
+A modularity of 0 indicates that the partition is not better than a random partition. A positive modularity means that the partition is better than a random partition, i.e., the edges in the communities are denser than expected. A modularity of -0.5 indicates a missleading partition. 
+
+
+## The louvain method {.scrollable}
+
+1. Each node is its own community ;
+
+2. For each node $i$:
+    2.1. Calculate the modularity gain $\Delta Q$ of removing it from its community and adding to a neighbor community ;
+    
+    2.2 If $\Delta Q > 0$ for at least one community neighbor, move the node to the neighbor that results in the largest increase in modularity ;
+    
+
+4. Repeat steps 2 until no further increase in modularity can be achieved ;
+
+5. Aggregate the communities found in step 4 and treat them as nodes in a new network ;
+
+6. Repeat steps 2-5 ;
+
+## The leiden algorythm 
+
+
+## Bibliography 

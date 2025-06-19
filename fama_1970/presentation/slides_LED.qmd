@@ -1,0 +1,717 @@
+---
+format:
+  revealjs:
+    # figures 
+    fig-cap-location: bottom
+    width: 1500
+    slide-number: true
+    transition: slide 
+    theme: simple
+    embed-resources: true
+    # chalkboard: true
+---
+
+```{r}
+#| echo: false
+#| warning: false
+
+source(here::here("fama_1970", "paths_and_packages.R"))
+
+```
+
+## {#full-page}
+
+:::: {.columns}
+
+::: column
+
+![Challenger, January 28th 1986](image/challenger.jpg){height=10cm}
+::: 
+
+::: {.column}
+
+![@maloney2003stock](image/maloney_mulherin.png){height=10cm}
+::: 
+::::
+
+##  
+
+:::: {.columns}
+
+::: {.column width="60%"}
+![Introduction of @fama_efficient_1970[383]](image/fama_1970.png){height=11cm}
+:::
+
+::: {.column width="40%"}
+
+![Eugene Fama](image/fama_young.png){height=11cm}
+:::
+::::
+
+
+## 
+
+
+>  Si l’efficience des marchés, au sens du Fama, n’avait été qu’une proposition empirique, c’est-à-dire la formulation d’une propriété contingente, elle n’aurait certainement pas eu la postérité qu’elle a connue. Ce qui a fait de l’hypothèse d’efficience un outil si novateur et si abondamment utilisé n’est pas ce qu’elle dit sur les prix contingents observés sur un marché, mais l’interprétation des prix qu’elle permet. 
+
+::: justifyright
+Guillaume @vuillemey2013statut[111]
+::: 
+
+
+<!-- > If market efficiency, in Fama’s sense, had been only an empirical proposition, i.e. the formulation of a contingent property, it would certainly not have had the posterity it has had. What has made the efficient market hypothesis such an innovative and widely used tool is not what it states about the contingent prices observed in a market, but the interpretation of the prices it allows. -->
+
+
+## This paper  
+
+- **Object:** quantitatively studying the influence of Fama (1970) in scientific fields ; 
+
+. . . 
+
+- **Questions:** 
+
+  1. What are the scientific communities influenced by Fama (1970) ?
+  2. How the efficient market hypothesis is used by those communities ?
+  
+
+## Identifying communities
+
+- **Bibliometric data:** a corpus of documents citing Fama (1970) with their metadata (title, journal, references, etc.) ;
+  - I use the Web of Science index ; 
+
+. . . 
+
+  - **Purpose**: identifying the communities influenced by Fama (1970) ;
+  - **Hypothesis:** a citation reflect an influence between the cited and the citing document.
+
+
+## Bibiliometric data 
+
+![Documents citing Fama (1970) by year. Source: Web of Science Citation Index](image/reviews_citations_all.jpg){#fig-all_distribution fig-align="center"}
+
+## Disciplines 
+
+![Corpus distribution by year (left) and the disciplines of documents in % of total (right). Source: Web of Science Citation Index. Disciplines classification by the author.](image/documents_field.jpg){#fig-distribution fig-align="center"}
+
+
+## Bibliometric coupling   
+
+```{dot}
+
+graph {
+  rankdir=LR;
+  
+  # Les deux textes du corpus
+  A [label="Texte A"];
+  B [label="Texte B"];
+  C [label="Texte C"]
+  
+  # Les textes cités
+  X [label="Fama (1970)"];
+  Y [label="Reference 2"];
+  Z [label="Reference 3"];
+  
+  # Couplage bibliographique
+  A -- X;
+  A -- Y;
+  B -- X;
+  B -- Y;
+  B -- Z;
+  C -- Z;
+}
+```
+
+**Hypothesis:** The number of references in common between two texts is an indicator of their intellectual proximity.
+
+## Network representation 
+
+:::: columns
+
+::: {.column width="40%"}
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-asp: 1
+
+
+library(tidygraph)
+library(ggraph)
+library(ggplot2)
+
+
+# Définir les liens entre les textes et les poids de proximité
+edges <- data.frame(
+  from = c("A", "B", "B"),
+  to = c("B", "C", "A"),
+  weight = c(2, 1, 2)  # Plus fort entre A et B
+)
+
+# Créer l'objet graphe avec tidygraph
+graph <- tbl_graph(edges = edges, directed = FALSE)
+
+
+# Visualiser le graphe
+ggraph(graph, layout = "fr") +  
+  geom_edge_link(alpha = 1, show.legend = FALSE, color = "grey") +
+  geom_node_point(size = 20, color = "black", fill = "orange", shape = 21, stroke = 1.5) + 
+  geom_node_text(aes(label = name), size = 5) + # Étiquettes des nœuds
+  theme_void()  
+
+
+``` 
+::: 
+
+::: {.column width="60%"}
+- Documents A, B and C are nodes; 
+- The edges are the coupling similarities ;
+- But various ways to measure a coupling similarity; 
+- Force-directed layout [@jacomy2014forceatlas2]: A and B has a **stronger** coupling similarity than B and C so A and B are **closer** in the network;
+::: 
+::::
+
+
+
+## Coupling similarity  
+
+:::: {.columns}
+::: {.column width="50%"}
+
+- The raw count; 
+
+- Normalized by the length of references [@sen1983mathematical];
+
+- Normalized by the popularity of references [@vladutz1984bibliographic];
+
+::: {.fragment fragment-index=1}
+- **Backbone** extraction ;
+::: 
+::: 
+
+::: {.column width="50%"}
+::: {.fragment fragment-index=1}
+
+```{r}
+#| label: "example from Neal"
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+
+
+# Load necessary libraries
+library(igraph)
+library(backbone)
+
+B <- rbind(cbind(matrix(rbinom(250,1,.8),10),
+                 matrix(rbinom(250,1,.2),10),
+                 matrix(rbinom(250,1,.2),10)),
+           cbind(matrix(rbinom(250,1,.2),10),
+                 matrix(rbinom(250,1,.8),10),
+                 matrix(rbinom(250,1,.2),10)),
+           cbind(matrix(rbinom(250,1,.2),10),
+                 matrix(rbinom(250,1,.2),10),
+                 matrix(rbinom(250,1,.8),10)))
+
+
+P <- B%*%t(B)
+
+bb <- sdsm(B, alpha = 0.075, narrative = TRUE, class = "igraph")
+
+
+par(mfrow=c(1,2))
+plot(igraph::graph_from_adjacency_matrix(P, mode = "undirected", diag = FALSE, weighted = TRUE), vertex.label = NA)
+plot(bb, vertex.label = NA)
+
+```
+:::
+::: 
+::::
+
+## Backbone extraction
+
+- The stochastic degree sequence model [@neal2014backbone]. 
+
+- There is an edge between two nodes if the number of references shared between them is significantly larger than expected by chance.
+
+- The null hypothesis is that the edges are distributed at random but the **degree sequence** of the observed network $B$ $d \times r$ is preserved.
+
+
+## Clustering method 
+
+:::: columns
+::: {.column width="40%"}
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-asp: 1
+
+
+library(tidygraph)
+library(tidyverse)
+library(ggraph)
+library(ggplot2)
+
+# Définir les liens pour former deux communautés bien séparées
+edges <- tribble(
+  ~from, ~to, ~weight,
+  "A", "B", 1,
+  "A", "C", 1,
+  "A", "D", 1,
+  "B", "C", 1,
+  "B", "D", 1,
+  "C", "D", 1,
+  "D", "E", 1,
+  "E", "F", 1,
+  "E", "H", 1,
+  "F", "G", 1,
+  "G", "H", 1,
+  "H", "G", 1,
+  "H", "F", 1
+)
+
+
+# Créer les nœuds et assigner manuellement les communautés
+
+nodes <- tribble(
+  ~name, ~community,
+  "A", "Group 1",
+  "B", "Group 1",
+  "C", "Group 1",
+  "D", "Group 1",
+  "E", "Group 2",
+  "F", "Group 2",
+  "G", "Group 2",
+  "H", "Group 2"
+)
+
+# Créer le graphe
+graph <- tbl_graph(nodes = nodes, edges = edges, directed = FALSE) %>%
+  mutate(community = group_leiden(resolution = 0.1))  # Paramètre ajusté pour obtenir 2 communautés
+
+# Visualiser le graphe
+ggraph(graph, layout = "fr") +  
+  geom_edge_link(alpha = 0.5, color = "grey", show.legend = FALSE) +
+  geom_node_point(aes(fill = as.factor(community)), size = 20, pch = 21, show.legend = FALSE) + 
+  geom_node_text(aes(label = name), size = 7) +  # Étiquettes des nœuds
+  scale_fill_manual(values = c("tomato", "steelblue")) +  # Couleurs pour chaque groupe
+  theme_void() 
+
+```
+::: 
+
+::: {.column width="60%"}
+- Intuitively, clusters are group of nodes more connected to each other than to the rest of the network [@traag_louvain_2019] ; 
+- Here, clusters are set of documents with relative more significant coupling similarities ; 
+- Clusters are _communities_, not schools of thought. 
+
+::: 
+
+:::: 
+
+## {fullscreen=true}
+
+
+![Coupling network using the force atlas layout (1970-1999). The nodes are documents. The size of nodes are total citations in WOS. The edges are the coupling similarities between nodes. Colors are communities. Labels are determined by the author.](image/coupling.jpg){#fig-coupling}
+
+
+## {fullscreen=true}
+
+
+![Coupling network in @fig-coupling but colors are displines, labels are meta-clusters](image/coupling2.jpg){#fig-coupling2}
+
+
+## Information and Trading 
+
+@grossman_impossibility_1980's paradox: 
+
+- If market prices reflect all available information: 
+- Then traders cannot profit from acquiring information ;
+- Then, there is no incentive to acquire information ;
+- Then market prices cannot reflect all available information.
+
+. . . 
+
+**Information**: how information is generated and processed in markets.
+
+**Trading**: how trading rules affect the price formation.
+
+
+## Exploring new markets and new disciplines 
+ 
+![](image/coupling.jpg)
+
+## Exploring new discplines 
+
+- Market efficiency is not corroborated but _assumed_ to be true ; 
+
+. . . 
+
+- Spreading a **financial approach** characterized by arbitrage and market efficiency arguments and the use of quantitative methods ; 
+
+. . . 
+
+- A financial approach advocated by Fama's students at Chicago, including Jeffrey F. Jaffe, Ray Ball, Philip Brown, Ross Watts, George J. Benston, James Ellert, and William Schwert. 
+
+
+## Exploring new discplines 
+
+- Using event study to make a positive evaluation of a policy ; 
+  - **Accounting**: what is the effect of a new accounting rule ?
+  - **Law**: what is the effect of a new regulation ? 
+  - **Marketing**: what is the value of a brand ? 
+
+
+> Most of the available empirical research on changes in accounting techniques attempts to establish reasons for, rather than consequences of, accounting changes.
+
+::: justifyright
+Ray @ball1972some[4]
+:::
+
+
+## The disclosure policy 
+
+- **Public disclosure:** the Act of 1933 and 1934 required large traded companies to disclose their financial information ; 
+
+. . .
+
+- George J. @benston1973required (Chicago's Ph.D. 1963):
+
+> The data presented above, that the disclosure required by the '34 Act had no measurable effect on the residual market prices of companies that did and did not
+disclose their sales, are consistent with the hypothesis that the market was efficient before the legislation was enacted, at least with respect to the financial data.
+
+
+## How the efficient market hypothesis is used ?
+
+- The corpus is extended with **textual data:** the paragraph in which Fama (1970) is cited ; 
+  - Paragraphs are extracted using `GROBID`, a machine learning model for parsing scientific documents ;
+
+- **Purpose**: understand how the efficient market hypothesis is used in the literature ;
+-  **Hypothesis**: the paragraphs are a relevant unit of the citation context.
+
+
+## Citation intent 
+
+:::: {.columns}
+
+::: {.column width="50%"}
+![Coupling network using the force atlas layout (1970-1999).](image/coupling.jpg){#fig-coupling}
+::: 
+
+::: {.column width="50%"}
+- **H-1**: peripheral communities are more likely to criticize Fama (1970) ;
+- **H-2**: peripheral communities are more likely to uncritically use Fama (1970) ;
+::: 
+::::
+ 
+## Classification task 
+
+- **criticizing:**  the paragraph is refuting or contrasting Fama's argument with opposite contributions. 
+
+- **using:** the paragraph is uncritically citing Fama (1970): assuming market efficiency, using a concept from Fama (1970) or applying a method. 
+
+## Textual data 
+
+![Distribution and intent of paragraphs.](image/intent_distribution.jpg){#fig-intent}
+
+
+
+## {.scrollable}
+
+```{r}
+#| fig-cap: "Logit model using metacluster, and year as predictor of the citation intent."
+#| label: fig-logit_metacluster
+#| echo: false
+#| warning: false
+
+list_model <- readRDS(here(clean_data_path, "logit_cluster.rds"))
+
+modelsummary::modelplot(list_model[[1]],
+                          coef_rename = c("meta_clustersExploring field" = "[Meta cluster] Exploring field",
+                                          "meta_clustersExploring market" = "[Meta cluster] Exploring market",
+                                          "fieldLaw" = "[Field] Law",
+                                          "fieldManagement" = "[Field] Management",
+                                          "fieldEconomics" = "[Field] Economics",
+                                          "fieldOther" = "[Field] Other",
+                                          "year" = "Year")) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+
+```
+
+## {fullscreen=true}
+
+:::: {.columns}
+
+::: {.column width="65%"}
+![Coupling network using the force atlas layout (1970-1999).](image/coupling.jpg){#fig-coupling}
+::: 
+
+::: {.column width="35%"}
+- Centrality measures ;
+  - Betweenness:
+  - Closeness ;
+  - Degree ;
+  - Eigencentrality ;
+
+::: 
+::::
+
+::: notes
+- Betweenness: the number of shortest paths that pass through a node ;
+- Closeness: the average distance between a node and all other nodes ;
+- Degree: the number of edges connected to a node ;
+- Eigencentrality: the number of important nodes connected to a node.
+
+::: 
+
+
+## Predict with centrality measures 
+
+```{r}
+#| fig-cap: "Logit model using centrality"
+#| label: fig-logit_centrality
+#| echo: false
+#| warning: false
+
+
+centrality <- readRDS(here(clean_data_path, "logit_centrality.rds"))
+
+modelsummary::modelplot(centrality) + geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+```
+
+
+## Conclusion 
+
+- While the efficient market hypothesis is refuted in the core finance, it is used as a **premise** in other fields ;
+
+- Fama (1970) helps in spreading a **financial way of thinking** ;
+  - Price as entity conveying information ; 
+  - Price as a benchmark for evaluating policies ;
+  
+- Market efficiency gained popularity by disseminating a **style of reasoning** rather than a corroborated hypothesis ;
+
+
+# Appendix 1: bibliometric coupling 
+
+## Definition of a bipartite network
+
+- Consider a bipartite network linking documents and references. Let $B$ be a $d \times r$ incidence matrix, where $d$ is the number of documents and $r$ is the number of references. $B_{ik} = 1$ if document $i$ cites reference $k$, otherwise $B_{ik} = 0$. 
+  - The sum of a row, $D_k = \sum_{i=1}^d B_{ik}$, represents the number of documents citing a reference. 
+  - The sum of a line, $R_i = \sum_{k=1}^r B_{ik}$ represents the number of references in a document.
+
+## The backbone of a bipartite network {.scrollable}
+
+Let $P$ denote the projection of the bipartite network $B$ onto a bibliographic coupling. $P$ is a $d \times d$ matrix defined as $B \times B^T$. $P_{ij}$ represents the number of references shared between documents $i$ and $j$. 
+
+
+The **backbone** of the network $P$ is denoted as $P'$. $P'$ is a $d \times d$ matrix where $P'_{ij} = 1$ if document $i$ and document $j$ are significantly linked, otherwise $P'_{ij} = 0$.
+
+$P'_{ij}$ is defined by the following rule:
+
+$$P'_{ij} = \begin{cases} 1 & \text{if } \Pr(P^*_{ij} \geq P_{ij}) < \frac{\alpha}{2}, \\ 0 & \text{otherwise.} \end{cases} $$
+Where $P^*_{ij}$ is the number of references shared between documents $i$ and $j$ in a generated network $B^* \in \mathcal{B}^*$. 
+
+In other words, $P'_{ij} = 1$ if the probability that the generated edge between $i$ and $j$ are larger than the observed edge is less than $\alpha/2$. $alpha$ is divided by 2 to account for the fact that the test is technically two-tailed (the generated edges could also be smaller than the observed edges). 
+
+
+
+## The Fixed Degree Sequence Model  {.scrollable}
+
+The model aims to generate $N$ bipartite networks $\mathcal{B}^*$ that share the **exact degree sequence** of the observed network $B$.  
+
+
+Let $P^*_{ij}$ be a random variable representing the number of references shared between documents $i$ and $j$ from a generated bipartite network $B^* \in \mathcal{B}^*$, with the constraint that the degree sequence is **strictly preserved** in every generated network:
+
+$$
+\sum_j B^*_{ij} = D_i \quad \text{and} \quad \sum_i B^*_{ij} = R_j, \quad \forall B^* \in \mathcal{B}^*.
+$$
+
+
+This means that, in **every** generated network $B^*$, each document cites **exactly** the same number of references as in the observed network, and each reference is cited **exactly** the same number of times.
+
+
+## The Stochastic Degree Sequence Model {.scrollable}
+
+
+The model aims to generate $N$ bipartite networks $\mathcal{B}^*$ that share the **degree sequence** of the observed network $B$ **only in average**.
+
+
+Let $P^*_{ij}$ be a random variable representing the number of references shared between documents $i$ and $j$ from a generated bipartite network $B^* \in \mathcal{B}^*$, with the constraint that the expected degree sequence is preserved:
+
+$$
+\mathbb{E}_{B^*} \left[ \sum_j B^*_{ij} \right] = D_i \quad \text{and} \quad \mathbb{E}_{B^*} \left[ \sum_i B^*_{ij} \right] = R_j.
+$$
+
+This means that, **on average** of all generated networks $B^* \in \mathcal{B}^*$, each document cites the same number of references as in the observed network, and each reference is cited the same number of times.
+
+## Modularity: the expected number of edges {.scrollable}
+
+Soit un réseau de $n$ nodes
+
+Let's define a network of $n$ nodes and $m$ edges. The degree of a node $v$ is denoted by $k_v$, which can also be understood as a stub. The degree of the network is $2m$, that is the sum of all stubs. 
+
+If edges are distributed at random, one stub of node $v$ can be connected to any of the remaining $2m-1$ stubs. If the node $w$ has $k_w$ stubs, the probability that a stub of node $v$ is connected to a stub of node $w$ is $\frac{k_w}{2m-1}$.
+
+
+Given two nodes $v$ and $w$, the expected number of edges between $v$ and $w$ if the edges were distributed at random is: 
+
+$$\sum_1^{k_v}{\frac{k_w}{2m-1}} = \frac{k_v k_w}{2m-1} $$
+
+
+If $m$ is large, we approximate the expected number of edges between $v$ and $w$ as $\frac{k_v k_w}{2m}$.
+
+
+## Modularity: formula {.scrollable}
+
+Given two nodes $v$ and $w$, the modularity of partition is $Q \in [-1/2, 1]$ is defined as:
+
+$$Q = \frac{1}{2m} \sum_{v=1}^n\sum_{w=1}^n \left[ A_{vw} - \frac{k_v k_w}{2m} \right] \delta(c_v, c_w)$$
+
+- $n$ is the number of nodes ;
+- $m$ is the number of edges in the network ;
+- $A_{vw}$ is the element of the adjacency matrix of the network, the actual number of edges between $v$ and $w$ ;
+- $k_v$ and $k_w$ are the degree of node $v$ and $w$;
+- $\delta(c_v, c_w)$ is the Kronecker delta function that is 1 if $c_v = c_w$ and 0 otherwise. That is, $Q \neq 0$ if and only if $v$ and $w$ are in the same community.
+
+A modularity of 0 indicates that the partition is not better than a random partition. A positive modularity means that the partition is better than a random partition, i.e., the edges in the communities are denser than expected. A modularity of -0.5 indicates a missleading partition. 
+
+
+## The louvain method {.scrollable}
+
+1. Each node is its own community ;
+
+2. For each node $i$:
+    
+  2.1. Calculate the modularity gain $\Delta Q$ of removing it from its community and adding to a neighbor community ;
+  
+  2.2 If $\Delta Q > 0$ for at least one community neighbor, move the node to the neighbor that results in the largest increase in modularity ;
+    
+
+4. Repeat steps 2 until no further increase in modularity can be achieved ;
+
+5. Aggregate the communities found in step 4 and treat them as nodes in a new network ;
+
+6. Repeat steps 2-5 ;
+
+# Appendix 2: regression analysis 
+
+## {.scrollable}
+
+```{r}
+#| tbl-cap: "Exemples of paragraphs" 
+#| label: tbl-paragraphs
+#| echo: false
+#| warning: false
+
+intent_df <- xlsx::read.xlsx(here(clean_data_path, "list_paragraphs_to_clean.xlsx"), sheetIndex = 1) 
+
+intent_df %>%
+  select(id, intent, text, first_author, year) %>%
+  filter(id %in% c("42399161", "14168186")) %>%
+  select(-id) %>%
+  reframe(document = str_c(str_to_title(first_author), " (", year, ")"),
+          text,
+          intent) %>%
+  kbl(booktabs = T, escape = F) %>%
+  kableExtra::column_spec(2, width = "30em") %>% 
+  # reduce size text 
+  kableExtra::kable_styling(font_size = 17) 
+```
+
+## 
+
+```{r}
+#| fig-cap: "Logit model using cluster and year as predictor of the citation intent"
+#| label: fig-logit_cluster
+#| echo: false
+#| warning: false
+
+list_model <- readRDS(here(clean_data_path, "logit_cluster.rds"))
+
+modelsummary::modelplot(list_model[[2]],
+                          coef_omit = "cluster_labelVaria",
+                          coef_rename = c(
+                                          "year" = "Year",
+                                          "cluster_labelCommodities" = "Commodities",
+                                          "cluster_labelForeign" = "Foreign",
+                                          "cluster_labelMoney" = "Money",
+                                          "cluster_labelBetting" = "Betting",
+                                          "cluster_labelAccounting" = "Accounting",
+                                          "cluster_labelMarketing" = "Marketing",
+                                          "cluster_labelLaw" = "Law",
+                                          "cluster_labelHouse" = "House",
+                                          "cluster_labelManagement" = "Management",
+                                          "cluster_labelInformation" = "Information",
+                                          "cluster_labelTrading" = "Trading",
+                                          "cluster_labelPerformance" = "Performance",
+                                          "fieldLaw" = "[Field] Law",
+                                          "fieldManagement" = "[Field] Management",
+                                          "fieldEconomics" = "[Field] Economics",
+                                          "fieldOther" = "[Field] Other")) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+
+```
+
+## Metacluster regression table {.scrollable}
+
+```{r}
+#| tbl-cap: "Logit model using metacluster and year as predictor of the citation intent"
+#| label: tbl-logit_metacluster
+#| echo: false
+#| warning: false
+
+list_model <- readRDS(here(clean_data_path, "logit_cluster.rds"))
+
+tidy(list_model[[1]], labels = custom_labels) %>%
+  mutate(term = str_replace_all(term, "^meta_clusters", "[Meta clusters] "),
+         term = str_replace_all(term, "^field", "[Field] "),
+         term = ifelse(term == "year", "Year", term)) %>% 
+  select(-statistic) %>%
+  tinytable::tt() %>% 
+  tinytable::style_tt(fontsize = 0.5)
+
+```
+
+## Cluster regression table {.scrollable}
+
+```{r}
+#| tbl-cap: "Logit model using cluster and year as predictor of the citation intent"
+#| label: tbl-logit_cluster
+#| echo: false
+#| warning: false
+
+list_model <- readRDS(here(clean_data_path, "logit_cluster.rds"))
+
+
+tidy(list_model[[2]], labels = custom_labels) %>%
+  mutate(term = str_replace_all(term, "^cluster_label", "[Cluster] "),
+         term = str_replace_all(term, "^field", "[Field] "),
+         term = ifelse(term == "year", "Year", term)) %>% 
+  select(-statistic) %>%
+  tinytable::tt() %>% 
+  tinytable::style_tt(fontsize = 0.5)
+
+```
+
+## Centrality regression table {.scrollable}
+
+```{r}
+#| tbl-cap: "Logit model using centrality"
+#| tbl-cap-location: bottom
+#| label: tbl-logit_cenrality 
+#| echo: false
+#| warning: false
+
+
+modelsummary::modelsummary(centrality, 
+                           statistic = c("std.error", "p.value"),
+                           gof_map = "none",
+                           output = "tinytable")  %>% 
+ tinytable::style_tt(fontsize = 0.5)
+```
+
+
+## Bibliography 
