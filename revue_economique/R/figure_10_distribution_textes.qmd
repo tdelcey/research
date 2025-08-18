@@ -1,0 +1,23 @@
+## Figure 10: Distribution des textes par année
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| message: FALSE
+#| label: figure_10_distribution_texts
+
+df_text <- readRDS(here(private_data_path, "df_full_text.rds"))
+
+p <- df_text %>%
+  count(year) %>%
+  mutate(tooltip = paste("Année:", year, "<br>Count:", n)) %>%
+  ggplot(aes(x = as.integer(year), y = n, text = tooltip)) +
+  geom_col(binwidth = 1,
+           fill = colors[[1]]) +
+  labs(x = "Année", y = "Nombre de documents par année") +
+  theme_light(base_size = 15) 
+
+
+print(p)
+
+```

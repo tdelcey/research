@@ -1,0 +1,66 @@
+## Figure 9: effet du genre 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| fig.cap: "Estimate effect of having a women in the author list on topic prevalence"
+#| label: figure_9_gender_effect
+
+estimate_effect <- readRDS(here::here(clean_corpus_path, "estimate_effect_Local.rds"))
+
+summary <- summary(estimate_effect)
+
+summary_tibble <- summary$tables %>%
+  purrr::imap_dfr( ~ {
+    tibble(
+      topic = .y,
+      # Extract topic number
+      term = rownames(.x),
+      # Covariate names
+      estimate = .x[, 1],
+      # Coefficients
+      std_error = .x[, 2],
+      # Standard errors
+      t_value = .x[, 3],
+      # Confidence interval lower bound
+      p_value = .x[, 4]   # Confidence interval upper bound
+    )
+  })
+
+has_female_significant <- summary_tibble %>% 
+  filter(term == "has_female1") 
+  
+p <- has_female_significant %>%
+  left_join(top_terms_prob, by = "topic") %>%
+  left_join(metatopics %>% select(topic, label)) %>% 
+  mutate(
+    topic = reorder(topic, estimate),
+    effect = ifelse(estimate > 0, "Positive", "Negative"),
+    effect = ifelse(p_value > .10, "Non significatif au seuil de 90 %", effect),
+    tooltip = paste("Estimate:", estimate)
+  ) %>%
+  ggplot(aes(
+    x = estimate,
+    y = topic,
+    label = paste0(topic, ": ", label),
+    fill = effect
+  )) +
+  geom_col(size = 5) +
+  geom_text(size = 3.5, position = position_stack(vjust = .5)) +
+  scale_fill_manual(
+    name = "Effect",
+    values = c(
+      "Negative" = "#F2D3A9",
+      "Positive" =  "#99A6DA",
+      "Non significatif au seuil de 90 %" = "grey")) +
+  labs(x = "Effet estimé", y = NULL) +
+  theme_light() +
+  theme(
+    legend.position = "bottom",
+    text = element_text(size = 15),
+    axis.text.y = element_blank(),  # Removes y-axis text
+    axis.ticks.y = element_blank()) # Removes y-axis ticks +
+  
+print(p)
+
+```

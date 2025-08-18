@@ -1,0 +1,250 @@
+## Autres modèles STM 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| message: FALSE 
+#| eval: FALSE
+
+library(tidyverse)
+library(stm)
+library(DT)
+library(scales)
+library(glue)
+
+source(here::here("scripts","paths_and_packages.R"))
+
+many_stm <- readRDS(many_stm_path <- here::here(private_data_path, "many_stm_full_text.rds"))
+corpora_in_stm <- readRDS(here(private_data_path, "corpora_in_stm_FULL_TEXT.rds"))
+
+# Get all unique combinations of K and preprocessing
+combinations <- many_stm %>%
+  filter(K %in% c(30, 40),
+         preprocessing %in% c("1", "15", "20")) %>% 
+  select(K, preprocessing) %>%
+  distinct()
+
+plot_list <- list()
+theta_list <- list()
+beta_list <- list()
+
+# Loop through all combinations
+for (i in seq_len(nrow(combinations))) {
+  
+  # Extract K and preprocessing values
+  current_K <- combinations$K[i]
+  current_preprocessing <- combinations$preprocessing[i]
+  
+  # Extract the corresponding STM model
+  structured_topic_model <- many_stm %>%
+    filter(preprocessing == current_preprocessing & K == current_K) %>%
+    pull(3) %>%
+    .[[1]]
+  
+  # Extract metadata for the corpus
+  corpus_in_stm <- corpora_in_stm[[as.character(current_preprocessing)]]
+  
+  meta <- corpus_in_stm$meta %>%
+    mutate(document = row_number())
+
+  # Label topics with top words
+  top_terms <- labelTopics(structured_topic_model, n = 10)[[1]] %>%
+    as_tibble() %>%
+    reframe(topic_label = pmap_chr(., ~ paste(c(...), collapse = ", "))) %>%
+    mutate(topic = row_number())
+
+  # Extract gamma (theta)
+  gamma <- tidy(structured_topic_model, matrix = "gamma") %>%
+    left_join(meta) %>%
+    left_join(top_terms, by = "topic")
+
+  # Compute average gamma per topic
+  gamma_mean <- gamma %>%
+    group_by(topic, topic_label) %>%
+    summarise(gamma = mean(gamma), .groups = "drop") %>%
+    mutate(topic = reorder(topic, gamma))
+
+  # Extract top documents
+  gamma_top10 <- gamma %>%
+    group_by(topic) %>%
+    slice_max(order_by = gamma, n = 30) %>%
+    ungroup() %>%
+    select(topic, document, gamma, title) %>%
+    group_by(topic) %>% 
+    arrange(topic, desc(gamma))
+
+  beta <- tidy(structured_topic_model, matrix = "beta")
+  
+  beta_top10 <- beta %>%
+    group_by(topic) %>%
+    slice_max(order_by = beta, n = 20)
+  
+
+  # Generate the gamma plot
+  plot_list[[glue("K{current_K}_Preproc{current_preprocessing}")]] <- 
+    gamma_mean %>%
+    ggplot(aes(x = gamma, y = topic)) +
+    geom_segment(aes(x = 0, xend = gamma, yend = topic), color = "black", size = 0.5) +
+    geom_text(aes(label = topic_label), size = 4, hjust = -0.01, nudge_y = 0.0005) +
+    scale_x_continuous(expand = c(0, 0), limits = c(0, max(gamma_mean$gamma) + 0.2), labels = percent_format()) +
+    theme_light(base_size = 25) +
+    labs(
+      x = expression(theta),
+      y = NULL,
+      title = glue("Gamma Distribution for K = {current_K}, Preprocessing = {current_preprocessing}"),
+      caption = "Each topic is associated with the 10 most probable words from the Beta distribution"
+    )
+
+  # Store the table in the list
+  theta_list[[glue("K{current_K}_Preproc{current_preprocessing}")]] <- 
+    DT::datatable(
+      gamma_top10,
+      extensions = c('Buttons', 'ColReorder', 'FixedHeader'),
+      options = list(
+        dom = 'Bfrtip',
+        buttons = c('excel', 'csv'),
+        pageLength = 30,
+        colReorder = TRUE,
+        fixedHeader = TRUE,
+        order = list(list(2, 'desc')),
+        search = list(regex = TRUE, caseInsensitive = TRUE),
+        columnDefs = list(list(width = '500px', targets = 3))
+      ),
+      filter = "top"
+    )
+  
+    beta_list[[glue("K{current_K}_Preproc{current_preprocessing}")]] <- 
+    DT::datatable(
+      beta_top10,
+      extensions = c('Buttons', 'ColReorder', 'FixedHeader'),
+      options = list(
+        dom = 'Bfrtip',
+        buttons = c('excel', 'csv'),
+        pageLength = 30,
+        colReorder = TRUE,
+        fixedHeader = TRUE,
+        order = list(list(2, 'desc')),
+        search = list(regex = TRUE, caseInsensitive = TRUE),
+        columnDefs = list(list(width = '500px', targets = 3))
+      ),
+      filter = "top"
+    )
+}
+
+saveRDS(plot_list, here(private_data_path, "plot_list_stm_models.rds"))
+saveRDS(theta_list, here(private_data_path, "theta_list_stm_models.rds"))
+saveRDS(beta_list, here(private_data_path, "beta_list_stm_models.rds"))
+
+
+```
+
+::: {.panel-tabset}
+
+### K30_Preproc1
+
+#### Résumé 
+
+```{r}
+#| fig.height: 10
+#| fig.width: 20
+#| label: fig-K30_Preproc1
+
+
+plot_list <- readRDS(here(private_data_path, "plot_list_stm_models.rds"))
+
+plot_list[["K30_Preproc1"]]
+```
+
+
+#### Distribution theta  
+
+```{r}
+theta_list <- readRDS(here(private_data_path, "theta_list_stm_models.rds"))
+
+theta_list[["K30_Preproc1"]]
+```
+
+#### Distribution beta  
+
+```{r}
+beta_list <- readRDS(here(private_data_path, "beta_list_stm_models.rds"))
+
+beta_list[["K30_Preproc1"]]
+```
+
+
+### K30_Preproc15
+
+#### Résumé
+
+```{r}
+#| fig.height: 10
+#| fig.width: 20
+#| label: fig-K30_Preproc15
+
+plot_list[["K30_Preproc15"]]
+```
+
+
+#### Distribution theta
+
+```{r}
+theta_list[["K30_Preproc15"]]
+```
+
+#### Distribution beta 
+
+```{r}
+beta_list[["K30_Preproc15"]]
+```
+
+
+### K30_Preproc20
+
+#### Résumé 
+
+```{r}
+#| fig.height: 10
+#| fig.width: 20
+#| label: fig-K30_Preproc20
+
+plot_list[["K30_Preproc20"]]
+```
+
+#### Distribution theta 
+
+```{r}
+theta_list[["K30_Preproc20"]]
+```
+
+#### Distribution beta  
+
+```{r}
+beta_list[["K30_Preproc20"]]
+```
+
+### K40_Preproc1
+
+#### Résumé 
+
+```{r}
+#| fig.height: 10
+#| fig.width: 20
+#| label: fig-K40_Preproc1
+
+plot_list[["K40_Preproc1"]]
+```
+
+
+#### Distribution theta 
+
+```{r}
+theta_list[["K40_Preproc1"]]
+```
+
+#### Distribution beta  
+
+```{r}
+beta_list[["K40_Preproc1"]]
+```
+:::

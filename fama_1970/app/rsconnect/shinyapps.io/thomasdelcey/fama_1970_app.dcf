@@ -1,0 +1,12 @@
+name: fama_1970_app
+title: fama_1970_app
+username: thomasdelcey
+account: thomasdelcey
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14891372
+bundleId: 10485192
+url: https://thomasdelcey.shinyapps.io/fama_1970_app/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

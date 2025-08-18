@@ -1,0 +1,110 @@
+## Choix de K et du prétraitement
+
+À partir de six représentations du corpus, nous cherchons à estimer le nombre de thématiques de notre modèle $K$. Pour déterminer $K$, nous entraînons une série de modèles avec $K \in \{10, 20, ..., 70\}$. Nous estimons un modèle pour chaque valeur de $K$ (nombre de thématiques) et pour chaque valeur de $N$ (nombre de représentation du corpus selon le filtrage des mots), soit 42 modèles.
+
+Le _structural topic model_ est implémenté dans `R` dans le package `stm` [@roberts2013structural]. L'ensemble des informations relatives à cette implémentation est disponible sur le [site web](http://www.structuraltopicmodel.com/) dédié. Pour une exploration avancée, l'ensemble du code `R` est disponible sur le [GitHub](https://github.com/bstewart/stm/tree/master/R). Une série d'articles des auteurs présentent le modèle. @roberts2016model est la présentation la plus complète pour une exploration avancée de l'inférence bayésienne utilisée.  
+
+ 
+```{r}
+#| echo: TRUE
+#| eval: FALSE 
+#| label: "Search K"
+
+#' K evaluation 
+#' to start the session open
+ 
+library(stm)
+library(furrr)
+library(tidyverse)
+
+corpora_in_stm <- readRDS(here::here(private_data_path, "corpora_in_stm.rds"))
+
+
+#prepare furrr parallélisation
+# 
+# nb_cores <- availableCores() / 2 
+# plan(multisession, workers = nb_cores)
+
+#run multiple topic models 
+
+seed <- 123
+
+many_stm <- tibble::tibble(
+  K = seq(10, 70, by = 10),
+  preprocessing = list(names(corpora_in_stm))) %>% 
+  tidyr::unnest(cols = c(K, preprocessing)) %>% 
+  dplyr::mutate(st_models = map2(
+    K,
+    preprocessing,
+    ~ {
+      # run stm 
+      stm::stm(
+        documents = corpora_in_stm[[.y]]$documents,
+        vocab = corpora_in_stm[[.y]]$vocab,
+        data = corpora_in_stm[[.y]]$meta,
+        prevalence = as.formula("~has_female + is_varia + s(year)"),
+        K = .x,
+        init.type = "Spectral",
+        max.em.its = 800,
+        verbose = FALSE,
+        seed = seed
+      )
+      
+    },
+    .progress = TRUE,
+    .options = furrr_options(seed = seed)
+  ))
+
+saveRDS(many_stm, here::here(private_data_path, "many_stm.rds"), compress = TRUE)
+
+```
+
+Nous avons utilisé deux métriques : la _FREX_ et la cohérence sémantique pour chacune de ces combinaisons.
+
+La cohérence sémantique mesure la similarité entre les mots d'un thème [@mimno2011optimizing]. Similaire à la PMI dans l'esprit, la cohérence sémantique mesure la probabilité de voir deux mots ensemble dans un thème. À partir d'une liste de $M$ mots les plus probables par thématique, la cohérence d'un topic $k \in K$ est calculée comme suit :
+
+$$C_k = \sum_{i = 2}^{M} \sum_{j=1}^{i-1} \log\left( \frac{D(w_{i,k}, w_{j,k}) + 1}{D(w_{j,k})} \right)$$
+
+où $D(w_{i}, w_{j})$ est le nombre de documents où les mots $w_{i,k}$ et $w_{j,k}$ apparaissent ensemble au moins une fois, et $D(w_{j})$ est le nombre de documents où le mot $w_{j,k}$ apparaît au moins une fois. $M$ est fixé à 10 par défaut et nous avons utilisé cette valeur dans nos calculs. Plus la cohérence est élevée, plus les mots d'une thématique ont tendance à apparaître ensemble. Quand $K$ est grand, la cohérence des thématiques tend à diminuer.
+
+La _FREX_ (ou FREquent EXclusivity) est une mesure qui partage l'esprit de la célèbre mesure tf-idf et vise à évaluer l'importance d'un mot $w$ dans un thème $k$, en tenant compte à la fois de sa fréquence et de son exclusivité [@bischof2012summarizing]. Elle est définie par la formule suivante :
+
+$$FREX(w, k) = \left(\frac{a}{F} + \frac{1 - a}{E}\right)^{-1}$$ 
+
+Avec $F$ le rang normalisé du mot $w$ en termes de fréquence dans le thème $k$ et $E$ le rang normalisé du mot $w$ en termes d'exclusivité du mot $w$ dans le thème $k$.^[Le rang normalisé est calculé par la fonction de répartition empirique, c’est-à-dire, intuitivement, le nombre de points d'observation inférieurs au point observé sur le nombre total de points d'observation.] L'exclusivité est la probabilité que le mot $w$ appartienne à la thématique $j$, probabilité donnée par la distribution $\beta_{j}$, sur la somme des probabilités $\beta_{w, 1:K}$, soit $\frac{\beta_{w,j}}{\sum_1^K\beta_{w,k}}$. La valeur $\beta_{w,j}$ estime la probabilité que le mot $w$ appartienne à $j$. Normalisée, cette valeur mesure à quel point $w$ est _exclusif_ à $j$ par rapport aux autres thématiques.
+
+La moyenne harmonique accorde moins d'importance aux mots qui ont un score élevé pour une seule dimension. L'idée est de pénaliser à la fois les mots très fréquents mais peu exclusifs, et les mots rares mais très exclusifs. $a$ est une variable pondérant l'importance accordée aux deux mesures respectives — $a$ est fixé à $0{,}3$ par défaut, et nous avons utilisé cette valeur dans nos calculs.^[Ici, nous avons repris la formule de la FREX de l’article. Dans le package `stm`, la formule est inversée. Le paramètre $a = 0{,}7$ est associé à $E$ et $(1-a)$ à $F$ dans la fonction `stm::exclusivity()`.] La FREX d'une thématique est calculée pour les 10 mots les plus probables de chaque thématique. Plus la FREX est élevée, plus la thématique est exclusive et considérée de qualité. Quand $K$ est grand, la FREX d'une thématique tend à augmenter.
+
+Nous utilisons la bibliothèque `stm` pour estimer ces métriques, respectivement les fonctions `stm::semanticCoherence` et `stm::exclusivity`. Ces résultats indiquent que, quel que soit le prétraitement, un nombre de thèmes de 50 semble être un bon compromis entre la cohérence sémantique et la _FREX_.
+
+
+```{r}
+#| echo: TRUE
+#| eval: FALSE 
+#| label: "compute metrics"
+
+many_stm <- readRDS(here::here(private_data_path, "many_stm.rds"))
+corpora_in_stm <- readRDS(here(private_data_path, "corpora_in_stm.rds"))
+
+# estimate exclusivity and coherence 
+
+setDT(many_stm)
+
+# unnest corpus_in_stm by K 
+many_stm[, corpus_in_stm := corpora_in_stm, by = K]
+
+# many_stm[, heldout := future_map(corpus_in_stm, ~ make.heldout(.x$documents, .x$vocab))]
+many_stm[, exclusivity := map(st_models, exclusivity)]
+many_stm[, semantic_coherence := map2(st_models, corpus_in_stm, ~ semanticCoherence(.x, .y$documents))]
+
+evaluation_result <- many_stm[, .(
+  K,
+  preprocessing, 
+  # heldout = mean(unlist(map(eval_heldout, "expected.heldout"))),
+  # residual = mean(unlist(map(residual, "dispersion"))),
+  semantic_coherence = map_dbl(semantic_coherence, mean),
+  exclusivity = map_dbl(exclusivity, mean)
+  # lbound
+)]
+
+```

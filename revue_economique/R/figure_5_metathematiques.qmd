@@ -1,0 +1,79 @@
+## Figure 5: évolution des méta-thématiques 
+
+```{r}
+#| echo: TRUE
+#| warning: FALSE
+#| label: figure_5_metatopics
+#| fig.cap: "Evolution des meta-thématiques"
+
+# load meta topics 
+
+structured_topic_model <- readRDS(here(private_data_path, "structured_topic_model.rds"))
+corpus_in_stm <- readRDS(here(private_data_path, "corpora_in_stm_FULL_TEXT.rds"))[["15"]]
+metatopics <- xlsx::read.xlsx(here(clean_corpus_path, "metatopics.xlsx"),
+                                     sheetIndex = 1) 
+
+metatopics <- metatopics %>% 
+  select(-remarques) 
+
+# output metatopics in latex format 
+
+# latex_output <- metatopics %>% left_join(top_terms_prob)
+# kableExtra::kable(latex_output, format = "latex", booktabs = TRUE, escape = FALSE)
+
+manual_color <- c("Analyse historique" = "#D55E00",      
+                  "Macroéconomie" = "#009E73", 
+                  "Expertise économique" = "#CC79A7", 
+                  "Microéconomie" = "#E69F00",
+                  "Economie internationale" = "#56B4E9"
+                  )           
+
+
+label_topic <- labelTopics(structured_topic_model, n = 5) 
+
+meta <- corpus_in_stm$meta %>% 
+  mutate(document = row_number()) 
+
+top_terms_prob <- label_topic %>% .[[1]] %>% 
+  as_tibble() %>% 
+  reframe(topic_label_prob = pmap_chr(., ~ paste(c(...), collapse = ", "))) %>% 
+  mutate(topic = row_number()) 
+
+gamma <- tidy(structured_topic_model,
+     matrix = "gamma") %>% 
+  left_join(meta) %>% 
+  left_join(top_terms_prob, by = "topic") 
+
+meta_gamma_mean_year <- gamma %>% 
+  left_join(metatopics %>% select(topic, label, champ), by = "topic") %>% 
+  select(topic, champ, gamma, year) %>% 
+  group_by(year, topic) %>%
+  mutate(gamma = mean(gamma)) %>% 
+  unique %>% 
+  group_by(year, champ) %>% 
+  reframe(sum = sum(gamma))
+
+p <- meta_gamma_mean_year %>% 
+  ggplot(aes(
+    x = year,
+    y = sum,
+    group = champ,
+    fill = champ,
+  )) +
+  stat_smooth(geom = 'area',
+              position = 'stack',
+              method = "loess",
+              span = 0.25) + 
+  labs(title = "",
+       x = "Année",
+       y = "Somme des prévalences moyennes par année",
+       fill = "Meta-thématiques") +
+  scale_fill_manual(values = manual_color) +
+  theme(text = element_text(size = 12)) +
+  theme_light() 
+
+
+print(p)
+
+```
+

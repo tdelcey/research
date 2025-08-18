@@ -1,0 +1,333 @@
+Notre jeu de données est composé de quatre tables :
+
+-   Une table des **métadonnées**. Chaque ligne est un document qui possède un identifiant unique, `id`. Cet identifiant est soit l'identifiant Persée, soit l'identifiant Cairn. Certaines lignes partagent le même `id` car quelques documents dans la base de données originale de la *Revue Économique* correspondent à une même notice bibliographique dans Persée ou Cairn. Une URL est disponible pour chaque document pour consulter la notice Persée ou Cairn en ligne.
+-   Une table des **auteurs** associés à ces documents. Chaque ligne correspond à un auteur d'un document et nous leur avons attribué un identifiant unique `id_authors`. Chaque auteur est associé à ses documents par un identifiant que nous avons créé, `id_document`. Les auteurs sont identifiés par leur nom, prénom, genre. Pour les documents archivés par Persée, nous avons également enrichi la base de données avec les informations issues d'[IdRef](https://www.idref.fr/), une base de données qui recense les informations sur les auteurs de l'enseignement et de la recherche en France.
+-   Une table des **éditeurs**. Chaque ligne correspond à un éditeur et une position institutionnelle au sein d'une université et/ou de la *Revue Economique* . Si une personne change d'universités ou de position dans le comité éditoriale, plusieurs lignes lui sont attribuées. La personne est identifiée par son nom, prénom, genre, institution, discipline et position au sein de la Revue Economique ainsi que les dates d'entrées et de sorties. 
+-   Une table avec les **textes entiers**. Malheureusement, nous ne pouvons pas partager les textes entiers pour des raisons de droits d’auteur. Le reste des données est consultable et téléchargeable dans les tableaux interactifs ci-dessous de la section ou directement la page [GitHub](https://github.com/tdelcey/research/revue_economique) du package de replication.
+
+## Sources 
+
+Nous avons utilisé trois sources principales pour la construction de notre base de données. La première source est un document interne à la revue économique qui répertorie les documents publiés dans la _Revue Économique_ entre 1950 et 2019. Ce document comprend plusieurs métadonnées des documents que nous avons exploitées : les titres, les auteurs, leur genre, l'année de publication, les numéros spéciaux, le type de document (note de lecture, article, etc.).
+
+Nous avons enrichi cette base de données avec deux autres sources, les deux bibliothèques numériques [Persée](https://www.persee.fr/), qui archive la revue économique entre 1950 et 2000, et [Cairn](https://www.cairn.info/), qui couvre la période de 2001 à aujourd'hui. Nous avons notamment utilisé les API de ces deux bibliothèques pour récupérer les résumés des articles ([https://oai.cairn.info/](https://oai.cairn.info/) et [https://www.persee.fr/entrepot-oai](https://www.persee.fr/entrepot-oai)). Nous avons également eu accès, après demande, aux textes entiers. Ces derniers ne sont malheureusement pas open data. Cairn nous a également donné accès aux citations entrantes et sortantes pour chaque document.
+
+La table des éditeurs a été construite par nos soins. Nous avons recoupé les informations sur Cairn, Persée, Jstor et d'autres entrepôts de la recherche en France comme [https://data.bnf.fr/](https://data.bnf.fr/), [https://www.sudoc.abes.fr/](https://www.sudoc.abes.fr/) ou [https://theses.fr/?domaine=theses](https://theses.fr/).
+
+
+```{r}
+#| echo: TRUE
+#| warning: FALSE
+
+documents <- read_xlsx(here(clean_corpus_path, "re_metadata_1950_2023.xlsx"),
+                       col_types = "text") %>% unique
+authors <- read_xlsx(here(clean_corpus_path, "re_authors_1950_2023.xlsx"),
+                     col_types = "text") %>% unique
+editors <- read_xlsx(here(clean_corpus_path, "re_editors.xlsx"),
+                     col_types = "text") %>% unique
+```
+
+
+## Nettoyage
+
+L'usage de différentes sources permet d'obtenir une base de données enrichie, mais augmente aussi le risque de doublons, soit parce que le doublon existe déjà dans les différentes sources utilisées, soit parce que nous avons fait des erreurs dans notre travail de fusion des différentes sources. L'algorithme ci-dessous vise à identifier des doublons par le biais de la stratégie suivante :
+
+- Les documents sont groupés par le premier auteur du document ;
+- Pour chaque groupe, nous calculons la distance _Optimal String Alignment_ (OSA) des titres. La mesure OSA calcule le nombre d'opérations (insertions, deletions, substitutions, and adjacent character transpositions) nécessaires pour rendre parfaitement identiques deux chaînes de caractères. Cette méthode est implémentée sur `R` via le package [`stringdist`](https://CRAN.R-project.org/package=stringdist) [@van2014stringdist].
+- Nous identifions et fusionnons les doublons en fonction de deux seuils : la distance OSA et la distance normalisée (distance OSA divisée par le produit des longueurs des deux titres).
+
+```{r}
+#| echo: TRUE
+#| eval: FALSE
+#| warning: FALSE
+#| message: FALSE
+
+
+#' Identify potential duplicates in corpus of documents with at least a title and an author
+#'
+#' This function detects potential duplicates in thesis metadata by comparing titles within groups
+#' of the same author. It calculates string distances between pairs of titles using the Optimal
+#' String Alignment (OSA) algorithm and filters results based on predefined thresholds.
+#'
+#' @param data_dt A `data.table` containing the thesis metadata, with at least three columns:
+#'   - `authors`: Normalized author names used for grouping.
+#'   - `title`: Normalized thesis titles.
+#'   - `id`: Unique identifiers for each thesis.
+#' @param threshold_distance Numeric. The maximum absolute string distance between two titles for them
+#'   to be considered duplicates.
+#' @param threshold_normalization Numeric. The maximum normalized string distance (distance divided by
+#'   the product of the title lengths) for two titles to be considered duplicates.
+#'
+#' @return A `data.table` containing the following columns:
+#'   - `id`: The identifier for the primary thesis in the duplicate group.
+#'   - `id`: The identifier for the duplicate thesis.
+#'   - `authors`: The author associated with the duplicates.
+#'   - `text1`: The first title in the comparison.
+#'   - `text2`: The second title in the comparison.
+#'   - `distance`: The absolute string distance between the titles.
+#'   - `normalized_distance`: The normalized string distance between the titles.
+#'   If no duplicates are found, the function returns `NULL`.
+#'
+#' @details
+#' The function first groups titles by `authors`, then compares all pairs of titles within each group.
+#' String distances are calculated using the OSA algorithm, which accounts for single-character
+#' substitutions, deletions, and transpositions. The results are filtered based on the provided
+#' thresholds to minimize false positives.
+#'
+#' @examples
+#' # Sample data
+#' data_dt <- data.table(
+#'   authors = c("smith john", "smith john", "doe jane"),
+#'   title = c("My document Title", "My document titlé", "Another document"),
+#'   id = c("ID1", "ID2", "ID3")
+#' )
+#'
+#' # Detect duplicates with specific thresholds
+#' find_duplicates(data_dt, threshold_distance = 2, threshold_normalization = 0.05)
+#'
+#' @export
+
+find_duplicates <- function(data_dt, threshold_distance, threshold_normalization, workers) {
+
+  # as data.table
+
+  data_dt <- as.data.table(data_dt)
+
+  # Group data by authors to avoid unnecessary comparisons
+  data_dt <- data_dt[, .(titles = list(title), ids = list(id)), by = authors]
+  data_dt <- data_dt[lengths(titles) > 1]  # Keep only groups with more than one title for safety (should not be necessary if data is clean)
+
+  # Define a helper function for processing a single group
+  process_group <- function(titles, ids, author) {
+    # Compare all title pairs within the group
+    comparison <- CJ(titles, titles, sorted = FALSE, unique = TRUE)
+    setnames(comparison, c("text1", "text2"))
+    # comparison <- comparison[text1 <= text2]  # Avoid redundant comparisons
+
+    # Calculate string distance and normalized distance
+    comparison[, distance := stringdist::stringdist(text1, text2, method = "osa")]
+    comparison[, normalized_distance := distance / (str_count(text1) * str_count(text2))]
+
+    if (nrow(comparison) > 0) {
+      comparison[, authors := author]
+
+      title_match <- comparison %>%
+        as.data.table() %>%
+        merge(data.table(title1 = titles, id_1 = ids), by.x = "text1", by.y = "title1", allow.cartesian = TRUE) %>%
+        merge(data.table(title2 = titles, id_2 = ids), by.x = "text2", by.y = "title2", allow.cartesian = TRUE) %>%
+        .[id_1 != id_2, .(id_1, id_2, authors, text1, text2, distance, normalized_distance)]
+
+      return(title_match)
+    }
+    return(NULL)
+  }
+
+  # Set up parallel processing
+  plan(multisession, workers = workers)
+
+  # Use future_map to parallelize the processing of each group
+  results <- future_map(
+    1:nrow(data_dt),
+    ~ process_group(
+      titles = data_dt$titles[[.x]],
+      ids = data_dt$ids[[.x]],
+      author = data_dt$authors[.x]
+    ),
+    .progress = TRUE
+  )
+
+  if(length(results) > 0) {
+    results <- results %>%
+      rbindlist()
+    setkey(results, key = id_1)
+    duplicates <- results[normalized_distance < threshold_normalization & distance < threshold_distance, ]
+    setnames(duplicates, "id_1", "id")
+    duplicates <- unique(duplicates)
+
+    return(duplicates)
+  } else {
+    return(NULL)
+  }
+}
+
+# first delete forthcoming article that are duplicates 
+
+# remove duplicates and save 
+
+documents <- documents %>% 
+  filter(!issue == "Forthcoming") 
+
+# select author information used in find_duplicate()
+
+authors_info_to_join <- authors %>%
+  select(id_document, authors)
+
+# join
+documents_with_authors <- documents %>%
+  left_join(authors_info_to_join, by = c("id" = "id_document"))
+
+# create metadata for stm
+data_to_check <- documents_with_authors %>%
+  filter(type %in% c("varia", "numéro spécial", "")) %>%
+  # nest author
+  group_by(id) %>%
+  mutate(authors_list = list(authors)) %>%
+  mutate(authors = first(authors)) %>%
+  # remove non unique line
+  unique %>%
+  # harmonize authors
+  mutate(authors = str_remove_all(authors, "[[:punct:]]"),
+         authors = str_to_lower(authors),
+         authors = str_squish(authors)) %>%
+  #remove special cases, regular chroniques
+  filter(!title %in%
+           c("Chronique de la pensée économique en Italie",
+             "Commentaires",
+             "La situation économique",
+             "Avant-propos",
+             "Introduction",
+             "introduction"))
+
+duplicates <- find_duplicates(data_dt = data_to_check,
+                                          threshold_distance = 6,
+                                          threshold_normalization = 0.1,
+                                          workers = 4)
+
+duplicates <- duplicates %>%
+  group_by(id) %>%
+  mutate(duplicates = list(c(id, id_2)),
+         duplicates = map(duplicates, ~ .x %>% sort()))
+
+# Add duplicates to the main metadata table
+documents <- documents %>%
+  left_join(duplicates %>%
+              select(id, duplicates)) %>%
+  mutate(duplicates = ifelse(duplicates == "NULL", NA_character_, duplicates))
+
+duplicates_to_keep <- documents %>%
+  filter(!is.na(duplicates)) %>%
+  # sort
+  unique %>%
+  group_by(duplicates) %>%
+  arrange(!is.na(abstract_fr),
+          # Prioritize rows where abstract_fr is not NA
+          as.numeric(issue),
+          # Prioritize numeric issues (NA if not numeric)
+          issue != "Forthcoming",
+          # Ensure "Forthcoming" is deprioritized
+          .by_group = TRUE) %>%
+  slice(1) %>%  # Keep only the first row within each group
+  ungroup() %>%
+  unique()
+
+documents <- documents %>%
+  filter(is.na(duplicates)) %>%
+  bind_rows(duplicates_to_keep)
+
+# maj authors data removing lines with duplicates
+
+id_to_keep <- documents$id
+
+authors <- authors %>%
+  filter(id_document %in% id_to_keep)
+
+saveRDS(documents, here(clean_corpus_path, "documents_no_duplicates.rds"))
+saveRDS(authors, here(clean_corpus_path, "authors_no_duplicates.rds"))
+```
+
+
+## Tables 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+
+documents <- readRDS(here(clean_corpus_path, "documents_no_duplicates.rds")) 
+
+authors <- readRDS(here(clean_corpus_path, "authors_no_duplicates.rds"))
+
+editors <- read_xlsx(here(clean_corpus_path, "re_editors.xlsx"),
+                     col_types = "text") %>% unique
+```
+
+::: {.panel-tabset}
+
+### Documents 
+
+```{r}
+#| echo: TRUE  
+#| warning: FALSE
+#| tbl-cap: "Table des documents"
+
+documents <- documents %>% 
+  # trunc abstracts for table lisibility  
+  mutate(abstract_fr = str_trunc(abstract_fr, 100, ellipsis = "..."),
+         abstract_en = str_trunc(abstract_en, 100, ellipsis = "..."))
+
+DT::datatable(
+  documents,
+  extensions = 'Buttons',
+  options = list(
+    dom = 'Blfrtip',
+    buttons = c('excel', 'csv'),
+    pageLength = 3
+  )
+)
+
+```
+
+### Auteur.es 
+
+```{r}
+#| echo: TRUE
+#| warning: FALSE
+#| tbl-cap: "Table des auteurs"
+
+authors_nested <- authors %>% 
+  group_by(id_authors) %>% 
+  mutate(id_document = list(id_document),
+         institution = list(institution),
+         year = list(year)) %>% 
+  select(-"Type d'institution", -"Discipline 1", -"Discipline 2") %>%
+  unique() 
+
+DT::datatable(
+  authors_nested,
+  extensions = 'Buttons',
+  options = list(
+    dom = 'Blfrtip',
+    buttons = c('excel', 'csv'),
+    pageLength = 3
+  )
+)
+
+```
+
+### Editeur.es 
+
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| label: tbl-editors
+#| tbl-cap: "Table des éditeurs"
+
+DT::datatable(
+  editors,
+  extensions = 'Buttons',
+  options = list(
+    dom = 'Blfrtip',
+    buttons = c('excel', 'csv'),
+    pageLength = 3
+  )
+)
+
+```
+
+
+
+
+
+
+
+
+::: 

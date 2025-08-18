@@ -1,0 +1,90 @@
+## Figure 12: Prévalence moyenne par année et effet de l'année prédit  
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE 
+#| eval: TRUE
+#| label: figure_12_moyenne_effet_annee  
+
+# load data 
+corpora_in_stm <- readRDS(here::here(private_data_path, "corpora_in_stm_full_text.rds"))
+corpus_in_stm <- corpora_in_stm[["15"]]
+
+structured_topic_model <- readRDS(here(private_data_path, "structured_topic_model.rds"))
+  
+topic_chosen <- 28
+# average prevalence 
+
+metadata <- corpus_in_stm$meta %>% 
+  as_tibble %>%
+  mutate(document = row_number()) %>% 
+  select(year, document)
+
+# tidy call gamma the prevalence matrix, stm calls it theta
+theta <- broom::tidy(structured_topic_model, matrix = "gamma") %>%
+  # broom called stm theta matrix gamma
+  left_join(metadata, by = "document")
+
+theta_mean <- theta %>%
+  filter(topic == topic_chosen) %>% 
+  group_by(topic, year) %>% 
+  reframe(theta_mean = mean(gamma)) 
+
+#plot 
+gg_average <- theta_mean %>%
+  ggplot(aes(x = year, y = theta_mean)) +
+  geom_line(color = "red") +
+  labs(y = "Prévalence moyenne",
+       x = "Année") +
+  theme_light(base_size = 15)
+
+
+# run regressions
+
+formula_spline <- as.formula("~ has_female + is_varia + s(year)")
+
+metadata <- corpus_in_stm$meta %>% as_tibble %>% 
+  mutate(year = as.numeric(year),
+         has_female = as.factor(has_female),
+         is_varia = as.factor(is_varia),
+         has_female = relevel(has_female, ref = "0"),
+         is_varia = relevel(is_varia, ref = "0"))
+
+# estimate effect with spline and without 
+
+estimate_effect_spline <- estimateEffect(formula_spline,
+                                  structured_topic_model,
+                                  metadata =  metadata,
+                                  documents = corpus_in_stm$documents,
+                                  uncertainty = "None",
+                                  nsims = 25)
+
+# plot 
+
+gg_spline <- tidystm::extract.estimateEffect(
+  estimate_effect_spline,
+  "year",
+  method = "continuous",
+  topic = topic_chosen,
+  model = structured_topic_model,
+  labeltype = "prob",
+  npoints = length(1950:2023),
+  n = 5
+) %>%
+  ggplot(aes(x = covariate.value)) +
+  geom_line(aes(y = estimate), color = "red") +
+  geom_line(aes(y = ci.lower), color = "red", linetype = "dashed") +
+  geom_line(aes(y = ci.upper), color = "red", linetype = "dashed") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(y = "Prévalence espérée de la thématique",
+       x = "Valeur de variable année") +
+  theme_light(base_size = 15) 
+
+
+print(gg_average)
+print(gg_spline)
+
+``` 
+
+
+

@@ -1,0 +1,13 @@
+name: fama_1970_dashboard
+title: app
+username: thomasdelcey
+account: thomasdelcey
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 11676678
+bundleId: 10038251
+url: https://thomasdelcey.shinyapps.io/fama_1970_dashboard/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: app_depreciated.R

@@ -1,0 +1,214 @@
+## Figure 8: Citations extra-disciplinaires
+
+
+Pour analyser les citations extra-disciplinaires des documents de la *Revue Économique*, nous avons utilisé les données de citation de Cairn — malheureusement, ces données ne sont pas disponibles pour les documents archivés par Persée, et Cairn ne nous autorise pas à les diffuser.
+
+Nous avons classifié à la main les journaux des documents qui sont cités au moins deux fois dans la *Revue Économique*, soit 1639 journaux (voir `ref_journals.xlsx`). Nous avons ensuite classé ces journaux par disciplines en utilisant le nom du journal, et en consultant le board éditorial de chaque journal en cas d'ambiguïté (i.e. _The Journal of Economics and Sociology_). Les journaux de finance sont des cas particuliers puisqu'ils pourraient légitimement être classés en économie ou en management. Nous avons donc décidé de créer une catégorie à part. Nous calculons ensuite la fréquence de chaque discipline au sein des documents, normalisée par le nombre de références. Plus un article cite de références, moins ses références comptent.
+
+
+```{r}
+#| echo: TRUE
+#| warning: FALSE
+#| message: FALSE 
+#| label: "Calculate extra-disciplinary citations ratio"
+
+
+# Normalize references
+
+# get fields and journal frequency  
+field <- read_xlsx(here(clean_corpus_path, "ref_journals.xlsx")) 
+
+#get references 
+cairn_ref <- read_xlsx(here(data_path, "raw_source", "cairn", "RECO_31-01-2024_références_sortantes.xlsx"))
+
+# join field and references  
+ref_journals <- cairn_ref %>%
+  # renaming for simplicity 
+  rename(journal = `Titre revue citée`,
+         year = `Année source`,
+         id = `ID_ARTICLE source`) %>% 
+  # keep only id in the official document database 
+  filter(id %in% documents$id) %>% 
+  # count number of references (use in the chunk later)
+  add_count(id, name = "n_ref") %>%
+  mutate(journal = str_to_lower(journal) %>% 
+           str_remove(., "^\\s?the") %>% 
+           str_trim(., "both")) %>% 
+  # add field and journal frequency 
+  left_join(field, by = "journal") %>% 
+  select(id, journal, field, year, n, n_ref) %>% 
+  filter(!is.na(journal),
+         !is.na(field)) 
+
+# estimate the normalized frequency of journals 
+ref_journals_normalize_weak <- ref_journals %>%
+  group_by(field, id) %>% 
+  reframe(n = n(),
+          n_normalize = n / n_ref,
+          n_ref = n_ref,
+          year = year) %>% 
+  unique() 
+
+```
+
+
+Nous reprenons ensuite la méthodologie de @truc2023interdisciplinarity pour identifier le ratio de citations extra-disciplinaires, c'est-à-dire le pourcentage de citations en dehors de l'économie par rapport au nombre total de citations. 
+
+
+::: {.panel-tabset}
+
+### Définition large 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| message: FALSE
+#| label: figure_8_citation
+#| fig.cap: "Références en dehors de l’économie"
+#| fig.subcap: 
+#| - "Par discipline"
+#| - "Total"
+
+
+# plot extra-disciplinary citation for the 12th most important fields  
+
+# find the 12th 
+field_to_keep <- ref_journals_normalize_weak %>%
+  group_by(field) %>% 
+  reframe(sum_n = sum(n_normalize)) %>% 
+  arrange(desc(sum_n)) %>% 
+  slice_max(sum_n, n = 12) %>% 
+  distinct(field)
+ 
+data_summary_weak <- ref_journals_normalize_weak %>%
+  # keep the the 12th most represented fields 
+  mutate(field = ifelse(field %in% field_to_keep$field, field, "Other")) %>%
+  # estimate the normalized frequency each year 
+  group_by(year) %>% 
+  mutate(sum_by_year = sum(n_normalize)) %>%
+  group_by(field, year) %>% 
+  reframe(sum_by_year_field = sum(n_normalize),
+          sum_by_year = sum_by_year) %>% 
+  unique %>% 
+  group_by(field, year) %>% 
+  mutate(ratio = sum_by_year_field/sum_by_year*100)
+
+
+field_levels <- unique(data_summary_weak$field[data_summary_weak$field != "Other"])
+
+# assign color to each field level 
+color_values <- c("Other" = "lightgray", 
+                  "Total" = "black",
+                  setNames(RColorBrewer::brewer.pal(length(field_levels), "Paired"), field_levels))
+
+
+
+p1 <- data_summary_weak %>%
+  # remove economics 
+  filter(field != "Economics") %>%
+  ggplot(aes(x = year, y = ratio, color = field, linetype = field, group = field)) +
+  geom_smooth(se = FALSE, method = 'loess', linewidth = 1.5, span = 0.75) +
+  labs(
+    x = "Année",
+    y = "% du total des références") +
+  scale_color_manual(values = color_values) +  # Apply custom color scale
+  guides(color = guide_legend(title = "", nrow = 4), 
+         linetype = guide_legend(title = "", nrow = 5)) +
+  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
+  theme_light(base_size = 16) + 
+  theme(legend.position = "bottom") 
+
+# total extra-disciplinary citations 
+data_summary_weak2 <- data_summary_weak %>% 
+  mutate(field = ifelse(str_detect(field, "Economics"), "Intra", "Extra")) %>%
+  group_by(field, year) %>% 
+  reframe(ratio = sum(ratio)) %>% 
+  unique 
+
+
+p2 <- data_summary_weak2 %>%
+  filter(field == "Extra") %>% 
+  mutate(field = "Total") %>%
+  ggplot(aes(x = year, y = ratio, color = field)) +
+  geom_point() +
+  geom_smooth(se=F, method = 'loess', span = 0.50,
+              linewidth= 1.5,
+              alpha = 0.2) +
+  scale_color_manual(values = color_values) +
+  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
+  labs(
+    color = "",
+    x = "Année",
+    y = "% du total des références") +
+  theme_light(base_size = 15) +
+  theme(legend.position = "none")
+
+
+print(p1)
+print(p2)
+
+```
+
+### Définition stricte 
+
+Afin de confirmer ces résultats, nous avons reclassé les journaux en utilisant une classification plus stricte de l'économie. Nous avons considéré que n'importe quel journal utilisant le mot "économie" dans son titre est un journal d'économie. Nous avons ensuite recalculé le ratio de citations extra-disciplinaires. La tendance haussière reste la même, même si (logiquement) le ratio de citations extra-disciplinaires est plus faible.
+
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| message: FALSE
+#| label: figures_8_citation_stricte
+#| fig.cap: "Références en dehors de l'économie (total, définition stricte de l'économie)"
+#| code-fold: TRUE
+#| code-summary: "Show the code" 
+
+# estimate normalized frequency 
+ref_journals_normalize_strong <- ref_journals %>%
+  mutate(field2 = ifelse(str_detect(journal, "[ée]conom"), "Economics", field)) %>% 
+  group_by(field2, id) %>% 
+  reframe(n = n(),
+          n_normalize = n / n_ref,
+          n_ref = n_ref,
+          year = year) %>% 
+  unique %>% 
+  rename(field = field2)
+
+# estimate normalized frequency each year 
+data_summary_strong <- ref_journals_normalize_strong %>%
+  mutate(field = ifelse(field %in% field_to_keep$field, field, "Other")) %>%
+  group_by(year) %>% 
+  mutate(sum_by_year = sum(n_normalize)) %>%
+  group_by(field, year) %>% 
+  reframe(sum_by_year_field = sum(n_normalize),
+          sum_by_year = sum_by_year) %>% 
+  unique %>% 
+  group_by(field, year) %>% 
+  mutate(ratio = sum_by_year_field/sum_by_year*100)
+
+# total extra-disciplinary citations 
+data_summary_strong2 <- data_summary_strong %>% 
+  mutate(field = ifelse(str_detect(field, "Economics"), "Intra", "Extra")) %>%
+  group_by(field, year) %>% 
+  reframe(ratio = sum(ratio)) %>% 
+  unique 
+
+# plot 
+
+p1 <- data_summary_strong2 %>%
+  filter(field == "Extra") %>% 
+  ggplot(aes(x = year, y = ratio)) +
+  geom_point() +
+  geom_smooth(se=F, method = 'loess', span = 0.50,
+              linewidth= 1,
+              color = colors[[1]],
+              alpha = 0.2) +
+  labs(
+    x = "Année",
+    y = "% du total des références") +
+  theme_light(base_size = 15)
+
+print(p1)
+```
+
+:::

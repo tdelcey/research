@@ -1,0 +1,25 @@
+## Figure 1: distribution des documents 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| label: figure_1_documents_distribution
+#| fig.cap: "Distribution des documents par année (articles et autre type de documents)"
+
+# plot document distribution 
+
+p <- documents %>%
+  mutate(type = case_when(
+    type == "varia" ~ "Varia",
+    type == "numéro spécial" ~ "Numéro spécial",
+    TRUE ~ "Recensions et autres"),
+    type = factor(type, levels = c("Recensions et autres", "Numéro spécial", "Varia"))) %>%
+  count(year, type) %>%
+  mutate(tooltip = paste("Année:", year, "<br>Nombre de documents:", n, "<br>Type:", type)) %>%
+  ggplot(aes(x = as.integer(year), y = n, fill = type, text = tooltip)) + 
+  geom_col() +
+  labs(x = "Année", y = "Nombre de documents", fill = "") + 
+  theme_article_scico() 
+
+print(p)
+```

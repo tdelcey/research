@@ -1,0 +1,196 @@
+## Présentation du modèle choisi 
+
+Les tables ci-dessous sont les distributions $\theta_{1:D}$ et $\beta_{1:K}$, les distributions de probabilité des thèmes pour chaque document et des mots pour chaque thème. La prévalence $\theta$ est notée $\gamma$ dans le code--- l'anotation conventionnelle dans la littérature.
+
+```{r}
+#| echo: TRUE 
+#| eval: FALSE
+#| label: "Chose stm"
+
+
+library(tidyverse)
+library(stm) 
+
+#' Running Topic model
+
+
+# load data 
+corpus_in_stm <- readRDS(here(private_data_path, "corpora_in_stm_FULL_TEXT.rds"))[["15"]]
+
+many_stm <- readRDS(many_stm_path <- here::here(private_data_path, "many_stm_full_text.rds")) 
+
+structured_topic_model <- many_stm %>% filter(K == 30 & preprocessing == "15") %>% pull(st_models) %>% .[[1]]
+
+saveRDS(structured_topic_model, here::here(private_data_path, "structured_topic_model.rds"))
+
+
+
+# save distributions in separated tibbles 
+
+label_topic <- labelTopics(structured_topic_model, n = 5) 
+
+meta <- corpus_in_stm$meta %>% 
+  mutate(document = row_number(),
+         # cut text 
+         text = str_trunc(text, 500)
+  )
+
+top_terms_prob <- label_topic %>% .[[1]] %>% 
+  as_tibble() %>% 
+  reframe(topic_label_prob = pmap_chr(., ~ paste(c(...), collapse = ", "))) %>%
+  mutate(topic = row_number()) 
+
+top_terms_frex <- label_topic %>% .[[2]] %>% 
+  as_tibble() %>% 
+  reframe(topic_label_frex = pmap_chr(., ~ paste(c(...), collapse = ", "))) %>%
+  mutate(topic = row_number()) 
+
+gamma <- tidy(structured_topic_model,
+     matrix = "gamma") %>% 
+  left_join(meta) %>% 
+  left_join(top_terms_prob, by = "topic") %>% 
+  left_join(top_terms_frex, by = "topic") 
+
+beta <- tidy(structured_topic_model, matrix = "beta")
+
+saveRDS(gamma, here(private_data_path, "gamma.rds"))
+saveRDS(beta, here(private_data_path, "beta.rds"))
+
+```
+
+:::{.panel-tabset}
+
+### Prévalence moyenne des thématique 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| message: FALSE
+#| label: fig-topic-summary
+#| fig.height: 10
+#| fig.width: 20
+
+
+gamma <- readRDS(here(private_data_path, "gamma.rds"))
+
+beta <- readRDS(here(private_data_path, "beta.rds"))
+
+gamma_mean <- gamma %>%
+  group_by(topic, topic_label_prob, topic_label_frex) %>%
+  summarise(gamma = mean(gamma)) %>%
+  ungroup %>% 
+  mutate(topic = reorder(topic, gamma)) 
+
+gg <- gamma_mean %>%
+  ggplot() +
+  geom_segment(
+    aes(x = 0, xend = gamma, y = topic, yend = topic),
+    color = "black",
+    size = 0.5
+  ) +
+  geom_text(
+    aes(
+      x = gamma, 
+      y = topic, 
+      label = paste0("Thématique ", topic, ": ", topic_label_prob)
+    ),
+    size = 6,
+    hjust = -.01,
+    nudge_y = 0.0005
+  ) +
+  scale_x_continuous(
+    expand = c(0, 0),
+    limits = c(0, max(gamma_mean$gamma) + 0.05)
+  ) +
+  theme_light() +
+  theme(
+    text = element_text(size = 20),
+    axis.text.y = element_blank(),  # Removes y-axis text
+    axis.ticks.y = element_blank()  # Removes y-axis ticks
+  ) + 
+  labs(
+    x = "Prévalences moyennes des thématiques",
+    y = NULL,
+    caption = "\n\n Note: chaque thématique est associée à ses mots les plus probables selon la distribution beta"
+  )
+
+print(gg)
+
+```
+
+### Distribution theta 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| message: FALSE
+#| label: tbl-gamma
+#| tbl-cap: "Les 10 documents avec la prévalence la plus importante pour chaque topic"
+
+# Filtrer les 10 documents les plus associés à chaque topic
+gamma_top10 <- gamma %>%
+  group_by(topic) %>% 
+  slice_max(order_by = gamma, n = 10) %>%  
+  ungroup() %>% 
+  select(topic, id, gamma, title, authors) %>% 
+  # cut text
+  # mutate(text = str_trunc(text, 500)) 
+  arrange(topic, desc(gamma))
+
+# Affichage avec DT
+gamma_top10 %>% 
+  DT::datatable(
+    extensions = c('Buttons', 'ColReorder', 'FixedHeader'),
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('excel', 'csv'),
+      pageLength = 10,
+      colReorder = TRUE,
+      fixedHeader = TRUE,
+      order = list(list(2, 'desc')),
+      search = list(regex = TRUE, caseInsensitive = TRUE),
+      columnDefs = list(
+        list(width = '500px', targets = 3) 
+      )
+    ),
+    filter = "top"
+  )
+```
+
+
+### Distribution beta 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| message: FALSE
+#| label: tbl-beta
+#| tbl-cap: "Top 10 des mots associés à chaque topic"
+
+# Filtrer les 10 documents les plus associés à chaque topic
+beta_top10 <- beta %>%
+  group_by(topic) %>% 
+  slice_max(order_by = beta, n = 10) %>%  
+  ungroup() 
+
+# Affichage avec DT
+beta_top10 %>% 
+  DT::datatable(
+    extensions = c('Buttons', 'ColReorder', 'FixedHeader'),
+    options = list(
+      dom = 'Bfrtip',
+      buttons = c('excel', 'csv'),
+      pageLength = 10,
+      colReorder = TRUE,
+      fixedHeader = TRUE,
+      order = list(list(2, 'desc')),
+      search = list(regex = TRUE, caseInsensitive = TRUE),
+      columnDefs = list(
+        list(width = '500px', targets = 3) 
+      )
+    ),
+    filter = "top"
+  )
+```
+
+:::

@@ -1,0 +1,67 @@
+## Figure 11: Cohérence et exclusivité des thématiques 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| message: FALSE
+#| label: figure_11_coherence_exclusivity 
+
+evaluation_result <- readRDS(here(private_data_path, "evaluation_result_FULL_TEXT.rds"))
+
+# plotting general metrics and choose a preprocessing treshold 
+
+k_metric_summary <- evaluation_result %>%
+  # rename(`Heldout` = heldout) %>%
+  select(K, preprocessing, semantic_coherence, exclusivity) %>%
+  rename(frex = exclusivity) %>%
+  gather(Metric, Value, -K, -preprocessing) %>% 
+  mutate(preprocessing = factor(preprocessing,
+                                levels = c("1", "5", "10", "15", "20", "30"))) %>% 
+  mutate(Metric = recode(Metric, 
+                         "semantic_coherence" = "Cohérence",
+                         "frex" = "FREX"))
+
+gg <- k_metric_summary %>%
+  ggplot(aes(K, Value, color = preprocessing)) +  # Include preprocessing in aes()
+  geom_point(size = 2) +  
+  geom_line() +
+  # Removed show.legend = FALSE
+  facet_wrap(~ Metric, scales = "free_y") +
+  labs(
+    x = "K (Nombre de thématiques)",
+    y = NULL,
+    color = "Filtre",
+    linetype = "Filtre",
+  ) +
+  theme_light(base_size = 15) +
+  # delete grey background
+  theme(legend.key = element_blank(), 
+        strip.background = element_rect(colour="white",fill="white"),
+        # color in black 
+        strip.text = element_text(color = "black"),
+        )
+# add specific geom point 
+colors <- c(
+  "#0072B280",  # Bleu foncé (anciennement "fr")
+  "#009E7380",  # Vert (anciennement "other")
+  "#CC79A780",  # Magenta/Rose (anciennement "en")
+  "#F0E44280",  # Jaune (anciennement "de")
+  "#E69F0080",  # Orange
+  "#76428A80"   # Bleu ciel
+)
+
+
+p <- gg + 
+  geom_point(data = k_metric_summary %>% 
+               filter((K == 30 & preprocessing %in% c("30", "15") & Metric == "FREX") |
+                      (K == 40 & preprocessing %in% c("5") & Metric == "Cohérence") |
+                      (K == 50 & preprocessing %in% c("30") & Metric == "FREX")),
+             aes(K, Value),
+             color = "red",
+             size = 3) +
+  scale_color_manual(values = colors) 
+
+
+print(p)
+
+```

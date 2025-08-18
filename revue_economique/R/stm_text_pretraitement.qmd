@@ -1,0 +1,337 @@
+## Prétraitement des données textuelles
+
+Dans cette section, nous détaillons les étapes suivies pour le prétraitement des données textuelles en vue de leur utilisation dans un _topic model_. En plus d'un pré-nettoyage et du formatage habituel des données textuelles, nous créons les deux variables indicatrices `is_varia` et `has_female` pour la future régression.
+
+La tokenisation a été réalisée grâce à la bibliothèque `tokenizers`. La liste des mots qui en découle est ensuite nettoyée pour supprimer les mots peu informatifs, typiquement certains caractères spéciaux, les chiffres et les mots d'une lettre, ainsi qu'une liste de _stopwords_. Les tokens sont généralement des unigrams, mais nous avons également inclus des bigrams. Nous avons conservé les bigrams selon leur score de Point Mutual Information (PMI) : 
+
+$$ PMI(w_1, w_2) = \log\left( \frac{P(w_1, w_2)}{P(w_1)P(w_2)} \right) $$
+
+Le PMI estime les chances d'observer deux mots ensemble par rapport à la probabilité d'observer ces mots indépendamment. Un PMI positif indique que les mots sont plus souvent observés ensemble que séparément. Nous avons conservé les bigrams qui apparaissent plus de 10 fois dans le corpus et présentent un PMI supérieur à 0. 
+
+Une pratique standard en modélisation thématique consiste à réduire la liste du vocabulaire en filtrant les mots peu utilisés. Par exemple, il est théoriquement peu utile de conserver les mots utilisés uniquement dans un seul document puisque, par construction, une thématique est un ensemble de mots qui tendent à co-occurrer ensemble. Filtrer les mots utilisés uniquement par un document ne fait pas perdre beaucoup d'information, mais augmente le temps computationnel en réduisant la taille du vocabulaire. Filtrer les mots peut également augmenter l'interprétabilité des thématiques. Intuitivement, un mot utilisé dans seulement quelques documents est peu informatif puisque les mots apparaissant rarement ne participent pas significativement à la structuration des thématiques et peuvent introduire du bruit dans l'analyse. Pour tester l'effet de différents filtrages, nous construisons différentes représentations du corpus en filtrant les mots qui apparaissent dans moins de $N$ documents, avec $N \in [1, 5, 10, 15, 20, 30]$. 
+
+
+```{r}
+#| echo: TRUE
+#| eval: FALSE 
+#| warning: FALSE
+#| message: FALSE
+#| label: "Join metadata and authors"
+
+#' SCRIPT FOR CHOOSING K 
+
+# Load packages and data 
+source(here::here("scripts","paths_and_packages.R"))
+source(here::here("scripts", "producing_results", "_functions_for_tm.R"))
+
+documents <- readRDS(here(clean_corpus_path, "documents_no_duplicates.rds")) 
+authors <- readRDS(here(clean_corpus_path, "authors_no_duplicates.rds"))
+
+full_text <- readRDS(here(clean_corpus_path, "full_text.rds")) %>% 
+  mutate(id = str_remove_all(id, "_[:digit:]{4}.txt$")) 
+
+### JOINING TABLES ###
+
+# select relevant authors information 
+authors_info_to_join <- authors %>%
+  select(id_document,
+         authors,
+         gender)
+
+# join tables
+documents_with_authors <- documents %>% 
+  left_join(authors_info_to_join, by = c("id" = "id_document")) %>% 
+  # create dummy variables has female and isvaria 
+  group_by(id) %>% 
+  mutate(has_female = as.integer(any(gender == "F")),
+         is_varia = ifelse(type == "varia", 1, 0)) %>% 
+  # nest author 
+  group_by(id) %>%
+  # keep only first author or first title for some id duplicates 
+  slice(1) %>%
+  # remove duplicates from joining 
+  select(id, authors, title, abstract_fr, year, has_female, is_varia, -gender, type) %>% 
+  unique
+
+# join fulltext 
+
+
+full_text_filtered <- documents_with_authors %>%
+  filter(type %in% c("varia", "numéro spécial")) %>%
+  left_join(full_text, by = "id") %>%
+  # filter na covariates
+  filter(!is.na(has_female), !is.na(is_varia))
+
+
+#### PRE-CLEANING #### 
+
+# using data.table for efficiency 
+
+# Convert to data.table if not already
+setDT(full_text_filtered)
+
+# Select relevant columns
+df_text <- full_text_filtered[, .(id, authors, title, abstract_fr, text, year, has_female, is_varia)]
+
+# Clean abstracts
+df_text[, abstract_fr := str_squish(abstract_fr)]
+df_text[, abstract_fr := str_trim(str_remove_all(abstract_fr, "^[Rr]ésumé"))]
+df_text[, abstract_fr := str_remove_all(abstract_fr, "Classification JEL.*$")]
+df_text[, abstract_fr := str_remove_all(abstract_fr, "JEL [Cc]ode(s)?.*$")]
+df_text[, abstract_fr := str_remove_all(abstract_fr, "JEL [Cc]lassification.*$")]
+df_text[, abstract_fr := str_remove_all(abstract_fr, "(JEL : D11, L13, Q42.)|(Classification jel : A14, B10, F13)")]
+df_text[, abstract_fr := fifelse(is.na(abstract_fr), "", abstract_fr)]
+
+# Clean texts
+df_text[, text := str_squish(text)]
+
+# remove revue economique in body text 
+df_text[, text := str_remove_all(text, "Revue économique")]
+df_text[, text := str_remove_all(text, "Revue Economique")]
+df_text[, text := str_remove_all(text, "REVUE ECONOMIQUE")]
+df_text[, text := str_remove_all(text, "REVUE CONOMIQUE")]
+# remove vol + number 
+df_text[, text := str_remove_all(text, "vol. [0-9]+")]
+
+
+# remove references bibliographique 
+df_text[, text := str_remove_all(text,  regex("Références bibliographiques.*", ignore_case = TRUE))]
+df_text[, text := str_remove_all(text,  regex("REFERENCES BIBLIOGRAPHIQUES.*", ignore_case = TRUE))]
+df_text[, text := str_remove_all(text,  regex("Notes bibliographiques.*", ignore_case = TRUE))]
+df_text[, text := str_remove_all(text,  regex("Bibliographie .*", ignore_case = TRUE))]
+df_text[, text := str_remove_all(text,  regex("Bibliography .*", ignore_case = TRUE))]
+df_text[, text := str_remove_all(text,  regex("APPENDIX .*", ignore_case = TRUE))]
+
+# handle french special character 
+df_text[, text := str_replace_all(text, "fa on", "façon")]
+df_text[, text := str_replace_all(text, regex("fran ais", ignore_case = TRUE), "Français")]
+df_text[, text := str_replace_all(text, regex("fran e", ignore_case = TRUE), "France")]
+df_text[, text := str_replace_all(text, " uvre ", "oeuvre")]
+df_text[, text := str_replace_all(text, "e ment ", "ement")]
+df_text[, text := str_replace_all(text, " tion ", "tion ")]
+
+# Construct final text column
+df_text[, text := tolower(paste(title, ".", abstract_fr, text)), by = id]
+
+saveRDS(df_text, here(private_data_path, "df_full_text.rds"), compress = TRUE)
+
+
+#### TOKENIZATION ####
+
+# df_text <- readRDS(here(intermediate_data_path, "df_full_text.rds"))
+
+# Tokenize sentences while keeping the document ID
+df_tokens <- df_text %>%
+  select(id, text) %>%
+  mutate(tokens = tokenizers::tokenize_words(text, 
+                                             lowercase = TRUE,
+                                             strip_punct = TRUE, # delete punctuation 
+                                             strip_numeric = TRUE, # delete numbers
+                                             simplify = FALSE)) %>% 
+  ungroup %>% 
+  unnest(tokens) %>%  # Expand token lists into rows
+  group_by(id) %>% 
+  mutate(token_id = row_number()) %>% 
+  rename(token = tokens) %>% # Rename column for clarity
+  select(id, token, token_id)
+
+#### STOPWORDS ####
+
+# prepare stop_words
+stop_words <- bind_rows(get_stopwords(language = "fr", source = "stopwords-iso"),
+                        get_stopwords(language = "fr", source = "snowball"),
+                        get_stopwords(language = "en", source = "stopwords-iso"),
+                        get_stopwords(language = "en", source = "snowball")) %>% 
+  distinct(word) %>% 
+  pull(word)
+
+custom_stop_words <- c(
+  "faire",
+  "faut",
+  "résumé",
+  "article",
+  "analyse",
+  "analyser",
+  "analysons",
+  "analysent",
+  "approche",
+  "étude",
+  "étudie",
+  "étudions",
+  "étudient",
+  "montrons",
+  "montrer",
+  "montre",
+  "montrent",
+  "permettre",
+  "permet",
+  "permettent",
+  "proposer",
+  "propose",
+  "proposons",
+  "proposent",
+  "utiliser",
+  "mettre",
+  "présente",
+  "présentons",
+  "présenter",
+  "role",
+  "rôle"
+)
+
+stop_words <- c(stop_words, custom_stop_words) 
+
+# use data.table for efficiency 
+
+# Convert to data.table if not already
+setDT(df_tokens)
+
+# Remove article contractions, punctuation from tokens
+df_tokens[, token := str_remove_all(token, "^(.*qu|[mjldscn])[\u0027\u2019\u2032\u0060]")]
+df_tokens[, token := str_remove_all(token, "[[:punct:]]")]
+
+# once, token are cleaned, we can remove stopwords, non-latin characters, digits and  one letter characters
+df_tokens <- df_tokens[!token %in% stop_words]
+df_tokens <- df_tokens[!str_detect(token, "[^\\p{Latin}]")]
+# df_tokens <- df_tokens[!str_detect(token, "[\u0370-\u03FF]")]
+df_tokens <- df_tokens[!str_detect(token, "^.*\\d+.*$")]
+df_tokens <- df_tokens[str_detect(token, "[[:letter:]]")]
+
+
+#### BIGRAMS ####
+
+# Create bigrams
+df_tokens <- df_tokens[order(id, token_id)]  # Ensure correct order
+df_tokens[, bigram := ifelse(token_id < shift(token_id, type = "lead"), 
+                             paste(token, shift(token, type = "lead"), sep = "_"), 
+                             NA),
+          by = .(id)]
+
+
+# filter na and count bigrams, keep only bigrams that appear more than 20 times
+bigram_counts <- df_tokens[!is.na(bigram)]
+bigram_counts <- bigram_counts[, .N, by = .(id, token, bigram)]  
+bigram_counts <- bigram_counts[N > 20]  
+
+# Split bigram into word_1 and word_2
+bigram_counts[, c("word_1", "word_2") := tstrsplit(bigram, "_", fixed = TRUE)]
+
+# Remove bigrams where either word is a stopword
+bigram_counts <- bigram_counts[!(word_1 %in% stop_words | word_2 %in% stop_words)]
+
+# Assign a unique window ID to each bigram (acts like `window_id`)
+bigram_counts[, window_id := .I]  # .I is the row number (unique ID), the context window is thus only the bigram itself
+
+# Convert to long format (similar to pivot_longer)
+bigram_long <- melt(bigram_counts, 
+                    id.vars = "window_id", 
+                    measure.vars = c("word_1", "word_2"), 
+                    variable.name = "rank", 
+                    value.name = "word") %>% 
+  as.data.table()
+
+# Calculate PMI values
+
+#Count occurrences of each word
+word_prob <- df_tokens[, .N, by = token]
+total_tokens <- sum(word_prob$N)
+word_prob[, prob := N / total_tokens]
+
+#Count occurrences of each bigram
+bigram_prob <- df_tokens[!is.na(bigram), .N, by = bigram]
+total_bigrams <- sum(bigram_prob$N)
+bigram_prob[, prob := N / total_bigrams]
+
+
+# Merge word_1 probabilities into bigram table and rename
+bigram_counts <- merge(bigram_counts, word_prob[, .(token, prob)], by.x = "word_1", by.y = "token", all.x = TRUE)
+setnames(bigram_counts, "prob", "prob_word_1")
+
+# Merge word_2 probabilities into bigram table and rename
+bigram_counts <- merge(bigram_counts, word_prob[, .(token, prob)], by.x = "word_2", by.y = "token", all.x = TRUE)
+setnames(bigram_counts, "prob", "prob_word_2")
+
+# merge bigram probabilities into bigram table and rename
+bigram_counts <- merge(bigram_counts, bigram_prob, by = "bigram")
+setnames(bigram_counts, "prob", "prob_bigram")
+
+# compute pmi 
+bigram_counts[, pmi := log2(prob_bigram / (prob_word_1 * prob_word_2))]
+
+# keep only bigrams with pmi > 0
+bigram_to_keep <- bigram_counts[pmi > 0] 
+bigram_to_keep <- bigram_to_keep[, keep_bigram := TRUE]
+
+
+# Add bigrams to the token list
+
+df_tokens_final <- df_tokens  %>% 
+  left_join(bigram_to_keep) %>% 
+  mutate(token = if_else(keep_bigram, bigram, token, missing = token),
+         token = if_else(lag(keep_bigram), lag(bigram), token, missing = token),
+         token_id = if_else(lag(keep_bigram), token_id - 1, token_id, missing = token_id)) %>% 
+  distinct(id, token_id, token)
+
+# save in term list format
+
+term_list <- df_tokens_final %>% 
+  rename(term = token)
+
+saveRDS(term_list, here(private_data_path, "term_list_FULL_TEXT.rds"))
+
+
+#### PREPROCESSING ####
+
+term_list <- readRDS(here(private_data_path, "term_list_FULL_TEXT.rds"))
+
+# create stm objects with diff pre-processing
+
+corpora_in_dfm <- list()
+corpora_in_stm <- list()
+
+treshsholds <- c(1, 5, 10, 15, 20, 30)
+
+for (i in 1:length(treshsholds)) {
+  
+  term_to_remove <- term_list %>%
+    distinct(id, term) %>% 
+    count(term, name = "frequency") %>%
+    filter(frequency <= i) %>% 
+    distinct(term)  
+  
+  #remove words 
+  terms_list_filtered <- term_list %>%
+    filter(!term %in% term_to_remove$term)
+  
+  #transform list of terms into stm object 
+  corpus_in_dfm <- terms_list_filtered %>%
+    add_count(term, id) %>%
+    cast_dfm(id, term, n)
+  
+  treshold <- treshsholds[[i]] %>% as.character()
+  
+  # dfm object 
+  corpora_in_dfm[[treshold]] <- corpus_in_dfm
+  
+  # stm object with covariate 
+  metadata <- terms_list_filtered %>%
+    select(id) %>% 
+    left_join(df_text, by = "id") %>% 
+    mutate(year = as.integer(year),
+           has_female = as.factor(has_female),
+           is_varia = as.factor(is_varia),
+           has_female = relevel(has_female, ref = "0"),
+           is_varia = relevel(is_varia, ref = "0")) %>% 
+    select(id, text, authors, title, abstract_fr, year, has_female, is_varia) %>%
+    unique
+  
+  corpus_in_stm <- quanteda::convert(corpus_in_dfm, to = "stm",  docvars = metadata)
+  
+  corpora_in_stm[[treshold]] <- corpus_in_stm
+  
+}
+
+saveRDS(corpora_in_stm, here(private_data_path, "corpora_in_stm_FULL_TEXT.rds"))
+
+```
+

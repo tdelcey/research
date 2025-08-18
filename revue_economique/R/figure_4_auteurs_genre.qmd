@@ -1,0 +1,57 @@
+## Figure 4: genre des contributeur.es 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| label: figure_4_author_gender
+#| fig.cap: "Distribution des auteurs par genre"
+#| fig.subcap: 
+#| - "Documents"
+#| - "Seulement les articles"
+#| layout-ncol: 2 
+
+# same but only articles 
+articles <- documents %>% filter(str_detect(type, "varia|spécial") | type == "")
+
+
+p1 <- authors %>%
+  filter(!is.na(gender),
+         !id_document %in% articles$id) %>%
+  group_by(gender, year) %>%
+  summarise(n = n()) %>%
+  ungroup %>%
+  ggplot(aes(
+    x = as.integer(year),
+    y = n,
+    fill = gender
+  )) +
+  geom_col() +
+  labs(x = "Année", y = "Nombre d'auteurs", fill = "Genre") +
+  theme_article_scico() 
+
+p2 <- authors %>%
+  filter(!is.na(gender),
+         id_document %in% articles$id) %>% 
+  group_by(gender, year) %>%
+  reframe(n = n()) %>%
+  ungroup %>%
+  ggplot(aes(
+    x = as.integer(year),
+    y = n,
+    fill = gender
+  )) +
+  geom_col() +
+  labs(x = "Année", y = "Nombre d'auteurs", fill = "Genre") +
+  theme_article_scico() 
+
+print(p1)
+print(p2)
+
+
+```
+
+
+
+
+
+

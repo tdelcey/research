@@ -1,0 +1,84 @@
+## Figure 7: langues des titres des documents 
+
+```{r}
+#| echo: TRUE 
+#| warning: FALSE
+#| label: figure_7_langues
+#| fig.cap: "Prédiction de la langue du titre"
+#| fig.subcap: 
+#| - "Articles scientifiques"
+#| - "Recensions et autres documents"
+#| layout-ncol: 2 
+
+file_ftz <- system.file("language_identification/lid.176.ftz", package = "fastText") # importing the pre-trained model
+
+# languages <- documents %>%
+#   select(id, title) %>%
+#   mutate(
+#     # language_cld3 = cld3::detect_language(title, size = 2),
+#     language_fasttext = furrr::future_map(
+#       title,
+#       ~ fastText::language_identification(
+#         input_obj = .x,
+#         pre_trained_language_model_path = file_ftz,
+#         k = 1,
+#         th = 0.0,
+#       )
+#     )
+#   )
+# 
+# saveRDS(languages, here(clean_corpus_path, "language_fasttext.rds"))
+
+languages <- readRDS(here(clean_corpus_path, "language_fasttext.rds"))
+
+# cleaning errors 
+title_fr <- c("Introduction")
+id_fr <- c("reco_0035-2764_1958_num_9_2_407293",
+           "reco_0035-2764_1964_num_15_4_407617",
+           "reco_0035-2764_1962_num_13_5_407529_t1_0849_0000_001",
+           "reco_0035-2764_1977_num_28_6_408364_t1_1030_0000_000",
+           "reco_0035-2764_1969_num_20_6_407897_t1_1062_0000_002")
+
+id_en <- c("reco_0035-2764_2000_num_51_3_410526",
+           "reco_0035-2764_1994_num_45_5_409606")
+
+languages_clean <- languages %>% 
+  unnest(language_fasttext) %>% 
+  rename(language = iso_lang_1) %>%
+  mutate(language = ifelse(title %in% title_fr, "fr", language),
+         language = ifelse(id %in% id_fr, "fr", language),
+         language = ifelse(id %in% id_en, "en", language),
+         language = ifelse(!language %in% c("fr", "en", "de", "it"), "autres", language),
+         language = factor(language, levels = c("autres", "it", "de", "en", "fr")))
+
+
+# add manally color for consistency between plots 
+language_colors <- c("fr" = "#0072B280", "autres" = "#009E7380", "en" = "#CC79A780", "de" = "#F0E44280", "it" = "#D55E0080")
+
+
+p1 <- languages_clean %>% 
+  left_join(documents %>% select(year, type, id), by = "id") %>%
+  filter(type %in% c("varia", "numéro spécial")) %>% 
+  count(language, year) %>%
+  ggplot(aes(x = as.integer(year), y = n, fill = language)) +
+  geom_col() +
+  scale_fill_manual(values = language_colors) +
+  theme_light(base_size = 15) +
+  labs(x = "Année", y = "Nombre de documents", fill = "")
+
+
+p2 <- languages_clean %>% 
+  left_join(documents %>% select(year, type, id), by = "id") %>%
+  filter(!type %in% c("varia", "numéro spécial")) %>% 
+  count(language, year) %>%
+  ggplot(aes(x = as.integer(year), y = n, fill = language)) +
+  geom_col() +
+  scale_fill_manual(values = language_colors) +
+  theme_light(base_size = 15) +
+  labs(x = "Année", y = "Nombre de documents", fill = "")
+
+
+print(p1)
+print(p2)
+
+```
