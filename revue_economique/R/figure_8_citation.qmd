@@ -65,9 +65,6 @@ Nous reprenons ensuite la méthodologie de @truc2023interdisciplinarity pour ide
 #| message: FALSE
 #| label: figure_8_citation
 #| fig.cap: "Références en dehors de l’économie"
-#| fig.subcap: 
-#| - "Par discipline"
-#| - "Total"
 
 
 # plot extra-disciplinary citation for the 12th most important fields  
@@ -101,51 +98,81 @@ color_values <- c("Other" = "lightgray",
                   "Total" = "black",
                   setNames(RColorBrewer::brewer.pal(length(field_levels), "Paired"), field_levels))
 
+# Données : top 5 + Other déjà calculé
+data_summary_top <- data_summary_weak %>%
+  filter(field != "Economics")
 
 
-p1 <- data_summary_weak %>%
-  # remove economics 
-  filter(field != "Economics") %>%
-  ggplot(aes(x = year, y = ratio, color = field, linetype = field, group = field)) +
-  geom_smooth(se = FALSE, method = 'loess', linewidth = 1.5, span = 0.75) +
-  labs(
-    x = "Année",
-    y = "% du total des références") +
-  scale_color_manual(values = color_values) +  # Apply custom color scale
-  guides(color = guide_legend(title = "", nrow = 4), 
-         linetype = guide_legend(title = "", nrow = 5)) +
-  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
-  theme_light(base_size = 16) + 
-  theme(legend.position = "bottom") 
-
-# total extra-disciplinary citations 
-data_summary_weak2 <- data_summary_weak %>% 
+# Ajouter le total Extra
+data_summary_total <- data_summary_weak %>%
   mutate(field = ifelse(str_detect(field, "Economics"), "Intra", "Extra")) %>%
-  group_by(field, year) %>% 
-  reframe(ratio = sum(ratio)) %>% 
-  unique 
+  group_by(field, year) %>%
+  reframe(ratio = sum(ratio)) %>%
+  filter(field == "Extra") %>%
+  mutate(field = "Total")
 
+# Fusionner
+data_summary_all <- bind_rows(
+  data_summary_top,
+  data_summary_total
+)
 
-p2 <- data_summary_weak2 %>%
-  filter(field == "Extra") %>% 
-  mutate(field = "Total") %>%
-  ggplot(aes(x = year, y = ratio, color = field)) +
-  geom_point() +
-  geom_smooth(se=F, method = 'loess', span = 0.50,
-              linewidth= 1.5,
-              alpha = 0.2) +
-  scale_color_manual(values = color_values) +
-  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
+# Définir l’ordre des facettes
+field_order <- data_summary_all %>%
+  group_by(field) %>%
+  summarise(total_ratio = sum(ratio, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(total_ratio)) %>%
+  pull(field)
+
+# Forcer Other puis Total à la fin
+field_order <- c(setdiff(field_order, c("Other", "Total")), "Other", "Total")
+
+# Appliquer l’ordre
+data_summary_all <- data_summary_all %>%
+  mutate(field = factor(field, levels = field_order))
+
+# Traductions des labels
+trad <- c(
+  "Economics"                   = "Économie",
+  "Finance"                     = "Finance",
+  "Management"                  = "Gestion",
+  "Medecine and Health Policy"  = "Médecine et politiques de santé",
+  "Medicine and Health Policy"  = "Médecine et politiques de santé",
+  "Statistics & Mathematics"    = "Statistiques & Mathématiques",
+  "Law"                         = "Droit",
+  "Political science"           = "Science politique",
+  "Urban Studies and Geography" = "Études urbaines et géographie",
+  "Psychology"                  = "Psychologie",
+  "General Social Sciences"     = "Sciences sociales générales",
+  "Environmental Sciences"      = "Sciences de l’environnement",
+  "Environnemental Sciences"    = "Sciences de l’environnement"
+)
+
+data_summary_all <- data_summary_all %>%
+  mutate(discipline = dplyr::recode(as.character(field), !!!trad)) 
+
+# Graphique facetté
+p1 <- data_summary_all %>%
+  ggplot(aes(x = year, y = ratio)) +
+  geom_smooth(se = FALSE, method = "loess",
+              linewidth = 0.8, colour = "black", span = 0.75) +
   labs(
-    color = "",
     x = "Année",
-    y = "% du total des références") +
-  theme_light(base_size = 15) +
-  theme(legend.position = "none")
+    y = "% du total des références"
+  ) +
+  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
+  facet_wrap(~ discipline, 
+  scales = "free_y",
+  # 3 columns
+  ncol = 3
+  ) +
+  theme_article_custom() +
+  theme(
+    legend.position = "none",
+    #strip.background = element_rect(fill = "white", colour = "black"),
+  )
 
-
-print(p1)
-print(p2)
+ggsave(p1, file = here(figures_path, "figure_8_citation-1.png"), width = 12, height = 15, dpi = 300)
 
 ```
 
@@ -201,14 +228,14 @@ p1 <- data_summary_strong2 %>%
   geom_point() +
   geom_smooth(se=F, method = 'loess', span = 0.50,
               linewidth= 1,
-              color = colors[[1]],
+              color = "grey50",
               alpha = 0.2) +
   labs(
     x = "Année",
     y = "% du total des références") +
-  theme_light(base_size = 15)
+  theme_article_custom() 
 
-print(p1)
+ggsave(p1, file = here(figures_path, "figure_8_citation-2.png"), width = 8, height = 6, dpi = 300)
 ```
 
 :::

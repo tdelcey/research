@@ -30,37 +30,47 @@ summary_tibble <- summary$tables %>%
 has_female_significant <- summary_tibble %>% 
   filter(term == "has_female1") 
   
-p <- has_female_significant %>%
+df_reg <- has_female_significant %>%
   left_join(top_terms_prob, by = "topic") %>%
   left_join(metatopics %>% select(topic, label)) %>% 
   mutate(
-    topic = reorder(topic, estimate),
-    effect = ifelse(estimate > 0, "Positive", "Negative"),
-    effect = ifelse(p_value > .10, "Non significatif au seuil de 90 %", effect),
-    tooltip = paste("Estimate:", estimate)
+    topic_label = paste0(topic, ": ", label),
+    effect_group = case_when(
+      p_value > .10 ~ "Non significatif au seuil de 90 %",
+      estimate > 0 ~ "Effet positif",
+      TRUE ~ "Effet négatif"
+    )
   ) %>%
-  ggplot(aes(
-    x = estimate,
-    y = topic,
-    label = paste0(topic, ": ", label),
-    fill = effect
-  )) +
-  geom_col(size = 5) +
-  geom_text(size = 3.5, position = position_stack(vjust = .5)) +
-  scale_fill_manual(
-    name = "Effect",
-    values = c(
-      "Negative" = "#F2D3A9",
-      "Positive" =  "#99A6DA",
-      "Non significatif au seuil de 90 %" = "grey")) +
-  labs(x = "Effet estimé", y = NULL) +
-  theme_light() +
-  theme(
-    legend.position = "bottom",
-    text = element_text(size = 15),
-    axis.text.y = element_blank(),  # Removes y-axis text
-    axis.ticks.y = element_blank()) # Removes y-axis ticks +
-  
-print(p)
+  mutate(topic_label = reorder(topic_label, estimate))
+
+# graphique pour un groupe donné
+plot_reg_group <- function(data, group_title) {
+  ggplot(data, aes(x = estimate, y = topic_label)) +
+    geom_point(size = 2, colour = "black") +
+    geom_errorbarh(aes(xmin = estimate - 1.64*std_error, 
+                       xmax = estimate + 1.64*std_error),
+                   height = 0.1, colour = "black") +
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    labs(
+      x = "Effet estimé (± IC 90%)",
+      y = NULL,
+      title = group_title
+    ) +
+    theme_article_custom()
+}
+
+# Séparer les trois groupes
+df_pos <- df_reg %>% filter(effect_group == "Effet positif")
+df_neg <- df_reg %>% filter(effect_group == "Effet négatif")
+df_ns  <- df_reg %>% filter(effect_group == "Non significatif au seuil de 90 %")
+
+p_pos <- plot_reg_group(df_pos, "Effets positifs (au moins une femme)")
+p_neg <- plot_reg_group(df_neg, "Effets négatifs (au moins une femme)")
+p_ns  <- plot_reg_group(df_ns, "Non significatifs")
+
+# Afficher
+print(p_pos) 
+print(p_neg)
+print(p_ns)
 
 ```

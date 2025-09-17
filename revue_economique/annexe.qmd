@@ -19,10 +19,11 @@ embed-resources: true
 
 ```{r}
 #| echo: false
-source(here::here("revue_economique", "paths_and_packages.R"))
+source(here::here("revue_economique", "R", "_paths_and_packages.R"))
+source(here::here("revue_economique", "R", "_functions.R"))
 ```
 
-Dans cette annexe, nous détaillons la construction de la base de données et nous présentons les codes utilisés pour les analyses. Hormis les données relatives aux textes entiers et aux citations qui sont confidentielles, les données sont disponibles dans le dépôt [GitHub](https://github.com/tdelcey/research/tree/main/fama_1970) du projet et le Zenodo. Les codes utilisés pour chaque analyse (transformation des données et visualisations) peuvent être déroulés en cliquant sur les boutons "Afficher le code". Ils peuvent aussi être consultés directement sur le dépôt [GitHub](https://github.com/tdelcey/research/tree/main/fama_1970) du projet dans chaque fichier `.qmd`.
+Dans cette annexe, nous détaillons la construction de la base de données et nous présentons les codes utilisés pour les analyses. Hormis les données relatives aux textes entiers et aux citations qui sont confidentielles, les données sont disponibles dans le dépôt [https://github.com/tdelcey/research/tree/main/fama_1970](https://github.com/tdelcey/research/tree/main/fama_1970) du projet et le Zenodo. Les codes utilisés pour chaque analyse (transformation des données et visualisations) peuvent être déroulés en cliquant sur les boutons "Afficher le code". Ils peuvent aussi être consultés directement sur le dépôt [GitHub](https://github.com/tdelcey/research/tree/main/revue_economique) du projet.
 
 # Données
 

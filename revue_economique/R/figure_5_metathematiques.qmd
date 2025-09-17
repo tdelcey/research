@@ -53,27 +53,38 @@ meta_gamma_mean_year <- gamma %>%
   group_by(year, champ) %>% 
   reframe(sum = sum(gamma))
 
+# Palette manuelle en nuances de gris
+manual_grey <- c(
+  "Analyse historique"      = "grey20",  # le plus foncé
+  "Macroéconomie"           = "grey40",
+  "Expertise économique"    = "grey60",
+  "Microéconomie"           = "grey75",
+  "Economie internationale" = "grey90"   # le plus clair
+)
+
 p <- meta_gamma_mean_year %>% 
   ggplot(aes(
     x = year,
     y = sum,
     group = champ,
-    fill = champ,
+    fill = champ
   )) +
-  stat_smooth(geom = 'area',
-              position = 'stack',
-              method = "loess",
-              span = 0.25) + 
-  labs(title = "",
-       x = "Année",
-       y = "Somme des prévalences moyennes par année",
-       fill = "Meta-thématiques") +
-  scale_fill_manual(values = manual_color) +
-  theme(text = element_text(size = 12)) +
-  theme_light() 
-
+  stat_smooth(
+    geom = "area",
+    position = "stack",
+    method = "loess",
+    span = 0.25,
+    colour = "black",        # contour noir pour bien séparer
+    linewidth = 0.2
+  ) + 
+  labs(
+    x = "Année",
+    y = "Somme des prévalences moyennes par année",
+    fill = "Meta-thématiques"
+  ) +
+  scale_fill_manual(values = manual_grey) +
+  theme_light(base_size = 14) 
 
 print(p)
-
 ```
 

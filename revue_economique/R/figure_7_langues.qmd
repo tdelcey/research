@@ -45,38 +45,43 @@ id_en <- c("reco_0035-2764_2000_num_51_3_410526",
 languages_clean <- languages %>% 
   unnest(language_fasttext) %>% 
   rename(language = iso_lang_1) %>%
-  mutate(language = ifelse(title %in% title_fr, "fr", language),
-         language = ifelse(id %in% id_fr, "fr", language),
-         language = ifelse(id %in% id_en, "en", language),
-         language = ifelse(!language %in% c("fr", "en", "de", "it"), "autres", language),
-         language = factor(language, levels = c("autres", "it", "de", "en", "fr")))
+  mutate(
+    language = ifelse(title %in% title_fr, "fr", language),
+    language = ifelse(id %in% id_fr, "fr", language),
+    language = ifelse(id %in% id_en, "en", language),
+    # on fusionne italien avec autres
+    language = ifelse(!language %in% c("fr", "en", "autres"), "autres", language),
+    language = factor(language, levels = c("autres", "en", "fr"))
+  )
 
+# palette de gris : fr clair, autres foncé
+language_greys <- c(
+  "autres" = "grey20",
+  "en"     = "grey50",
+  "fr"     = "grey85"
+)
 
-# add manally color for consistency between plots 
-language_colors <- c("fr" = "#0072B280", "autres" = "#009E7380", "en" = "#CC79A780", "de" = "#F0E44280", "it" = "#D55E0080")
-
-
+# Articles scientifiques
 p1 <- languages_clean %>% 
   left_join(documents %>% select(year, type, id), by = "id") %>%
   filter(type %in% c("varia", "numéro spécial")) %>% 
   count(language, year) %>%
   ggplot(aes(x = as.integer(year), y = n, fill = language)) +
-  geom_col() +
-  scale_fill_manual(values = language_colors) +
-  theme_light(base_size = 15) +
-  labs(x = "Année", y = "Nombre de documents", fill = "")
+  geom_col(colour = "black") +
+  scale_fill_manual(values = language_greys, drop = FALSE) +
+  labs(x = "Année", y = "Nombre de documents", fill = "Langue") +
+  theme_article_custom(base_size = 15)
 
-
+# Recensions et autres
 p2 <- languages_clean %>% 
   left_join(documents %>% select(year, type, id), by = "id") %>%
   filter(!type %in% c("varia", "numéro spécial")) %>% 
   count(language, year) %>%
   ggplot(aes(x = as.integer(year), y = n, fill = language)) +
-  geom_col() +
-  scale_fill_manual(values = language_colors) +
-  theme_light(base_size = 15) +
-  labs(x = "Année", y = "Nombre de documents", fill = "")
-
+  geom_col(colour = "black") +
+  scale_fill_manual(values = language_greys, drop = FALSE) +
+  labs(x = "Année", y = "Nombre de documents", fill = "Langue") +
+  theme_article_custom(base_size = 15)
 
 print(p1)
 print(p2)

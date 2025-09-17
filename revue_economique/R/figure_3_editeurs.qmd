@@ -2,60 +2,84 @@
 
 
 ```{r}
-#| echo: TRUE 
+#| echo: TRUE
 #| warning: FALSE
 #| label: figure_3_editeurs_gender_field
 #| fig-cap: "Evolution des éditeurs"
-#| fig-subcap: 
+#| fig-subcap:
 #| - "Part des femmes"
 #| - "Origine disciplinaire"
 #| layout-ncol: 2
 
-
-
-editors <- editors %>% 
-  filter(!is.na(Nom)) %>% 
-  mutate(date_departure = ifelse(is.na(date_departure), 2023, date_departure)) %>% 
+editors <- editors %>%
+  filter(!is.na(Nom)) %>%
+  mutate(
+    date_departure = ifelse(is.na(date_departure), 2023, date_departure)
+  ) %>%
   rename(field = `discipline 1`)
 
-editors_annually <- editors %>% 
+editors_annually <- editors %>%
   rowwise() %>%
   mutate(years = list(seq(date_entrance, date_departure, by = 1))) %>%
-  unnest(years) %>% 
-  select(years, Nom, Prénom, genre, field) %>% 
+  unnest(years) %>%
+  select(years, Nom, Prénom, genre, field) %>%
   unique
 
-p1 <- editors_annually %>% 
-  count(years, genre) %>% 
+p1 <- editors_annually %>%
+  count(years, genre) %>%
   group_by(years) %>%
-  mutate(percentage = n/sum(n)*100) %>% 
+  mutate(percentage = n / sum(n) * 100) %>%
   filter(genre == "F") %>%
   ggplot(aes(x = years, y = percentage)) +
-  geom_smooth(se = FALSE, method = 'loess', span = 0.75, alpha = 0.5, color = colors[[1]]) +
-  geom_point(, color = "black") +
-  labs(x = "Année", 
-    y = "Part dans le comité éditorial") + 
-  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
-  theme_article_scico()
-
-p2 <- editors_annually %>% 
-  count(years, field) %>% 
-  group_by(years) %>%
-  mutate(percentage = n / sum(n) * 100) %>% 
-  filter(!is.na(field)) %>%
-  ggplot(aes(x = years, y = percentage)) + 
-  geom_point(aes(color = field, shape = field), position = position_jitter(width = 0.3, height = 0)) +
-    labs(
-    x = "Année", 
-    y = "Part dans le comité éditorial",
-    color = "",
-    shape = ""
+  geom_smooth(
+    se = FALSE,
+    method = 'loess',
+    span = 0.75,
+    alpha = 0.5,
+    color = "gray85"
   ) +
+  geom_point(, color = "black") +
+  labs(x = "Année", y = "Part dans le comité éditorial") +
   scale_y_continuous(labels = scales::label_percent(scale = 1)) +
-  theme_article_scico()
+  theme_article_custom()
+
+p2 <- editors_annually %>%
+  filter(!is.na(field)) %>%
+  count(years, field, name = "n") %>%
+  group_by(years) %>%
+  mutate(percentage = 100 * n / sum(n)) %>%
+  ungroup() %>%
+  filter(!field == "Economie") %>%
+  ggplot(aes(x = years, y = percentage)) +
+  geom_point(
+    aes(shape = field),
+    position = position_jitter(width = 0.3, height = 0),
+    size = 2,
+    stroke = 0.8,
+    colour = "black",
+    fill = NA
+  ) +
+  scale_shape_discrete(name = "") + # formes distinctes
+  scale_y_continuous(
+    labels = scales::label_percent(scale = 1),
+    limits = c(0, 30)
+  ) +
+  labs(x = "Année", y = "Part dans le comité éditorial", shape = "") +
+  theme_article_custom() +
+  # legend on two lines
+  guides(shape = guide_legend(nrow = 2, byrow = TRUE))
 
 print(p2)
 print(p1)
+
+ggsave(
+  plot = p2,
+  filename = here::here("revue_economique", "figures", "figure_3_editeurs_gender_field-1.png"),
+  width = 8,
+  height = 5,
+  units = "in",
+  dpi = 300
+)
 
 ```
 

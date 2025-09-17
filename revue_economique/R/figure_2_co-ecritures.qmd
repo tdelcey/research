@@ -1,34 +1,32 @@
 ## Figure 2: part des co-écritures par année
 
 ```{r}
-#| echo: TRUE 
+#| echo: TRUE
 #| warning: FALSE
 #| label: figure_2_coauthors
-#| fig.cap: "Pourcentage d'articles en co-écriture par année" 
+#| fig.cap: "Pourcentage d'articles en co-écriture par année"
 
-# keep only articles 
+# keep only articles
 articles <- documents %>% filter(str_detect(type, "varia|spécial") | type == "")
 
-p <- authors %>% 
-  # keep only articles 
-  filter(id_document %in% articles$id) %>% 
+p <- authors %>%
+  # keep only articles
+  filter(id_document %in% articles$id) %>%
   group_by(id_document) %>%
-  reframe(n = n(),
-          year) %>% 
+  reframe(n = n(), year) %>%
   mutate(is_coauthor = ifelse(n > 1, 1, 0)) %>%
-  add_count(year) %>% 
+  add_count(year) %>%
   group_by(year, is_coauthor) %>%
-  reframe(total = nn,
-          n = n(),
-          percentage = n/total*100) %>% 
+  reframe(total = nn, n = n(), percentage = n / total * 100) %>%
   filter(is_coauthor == 1) %>%
   ggplot(aes(x = as.integer(year), y = percentage)) +
-  geom_smooth(se = FALSE, method = 'loess', span = 0.75, color = colors[[1]]) +
+  geom_smooth(se = FALSE, method = 'loess', span = 0.75, color = "gray50") +
   geom_point() +
   theme_light(base_size = 15) +
-  scale_y_continuous(labels = scales::label_percent(scale = 1)) +
-  labs(x = "Année",
-       y = "Part de co-écriture")
+  scale_y_continuous(labels = scales::label_percent(scale = 1)) + 
+  labs(x = "Année", y = "Part de co-écriture") +
+  theme_article_custom()
+
 
 print(p) 
 

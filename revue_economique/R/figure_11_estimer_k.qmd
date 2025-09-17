@@ -9,59 +9,54 @@
 evaluation_result <- readRDS(here(private_data_path, "evaluation_result_FULL_TEXT.rds"))
 
 # plotting general metrics and choose a preprocessing treshold 
-
 k_metric_summary <- evaluation_result %>%
-  # rename(`Heldout` = heldout) %>%
   select(K, preprocessing, semantic_coherence, exclusivity) %>%
   rename(frex = exclusivity) %>%
-  gather(Metric, Value, -K, -preprocessing) %>% 
-  mutate(preprocessing = factor(preprocessing,
-                                levels = c("1", "5", "10", "15", "20", "30"))) %>% 
-  mutate(Metric = recode(Metric, 
-                         "semantic_coherence" = "Cohérence",
-                         "frex" = "FREX"))
+  gather(Metric, Value, -K, -preprocessing) %>%
+  mutate(
+    preprocessing = factor(preprocessing, levels = c("1","5","10","15","20","30")),
+    Metric = recode(Metric, "semantic_coherence" = "Cohérence", "frex" = "FREX")
+  )
 
-gg <- k_metric_summary %>%
-  ggplot(aes(K, Value, color = preprocessing)) +  # Include preprocessing in aes()
-  geom_point(size = 2) +  
-  geom_line() +
-  # Removed show.legend = FALSE
+# Points choisis (adapte si besoin)
+selected_points <- k_metric_summary %>%
+  filter((K == 30 & preprocessing %in% c("30","15") & Metric == "FREX") |
+         (K == 40 & preprocessing %in% c("5")         & Metric == "Cohérence") |
+         (K == 50 & preprocessing %in% c("30")        & Metric == "FREX")) %>%
+  mutate(label_choice = paste0("K=", K, ", Filtre=", preprocessing))
+
+# palette de formes pour distinguer les niveaux de prétraitement
+shapes_vec <- c(16, 17, 15, 3, 4, 8)  # autant que tes 6 filtres
+
+p <- ggplot(k_metric_summary,
+            aes(K, Value, group = preprocessing,
+                shape = preprocessing)) +
+  # ligne commune (noire fine)
+  geom_line(colour = "black", linewidth = 0.2) +
+  # tous les points
+  geom_point(colour = "black", size = 3) +
+  # facettes cohérence / FREX
   facet_wrap(~ Metric, scales = "free_y") +
-  labs(
-    x = "K (Nombre de thématiques)",
-    y = NULL,
-    color = "Filtre",
-    linetype = "Filtre",
+  scale_shape_manual(values = shapes_vec, name = "Filtre") +
+  labs(x = "K (Nombre de thématiques)", y = NULL) +
+  theme_article_custom(base_size = 15) +
+  theme(
+    legend.position = "bottom",
+    legend.key = element_blank(),
+    strip.background = element_rect(colour = "white", fill = "white"),
+    strip.text = element_text(color = "black")
   ) +
-  theme_light(base_size = 15) +
-  # delete grey background
-  theme(legend.key = element_blank(), 
-        strip.background = element_rect(colour="white",fill="white"),
-        # color in black 
-        strip.text = element_text(color = "black"),
-        )
-# add specific geom point 
-colors <- c(
-  "#0072B280",  # Bleu foncé (anciennement "fr")
-  "#009E7380",  # Vert (anciennement "other")
-  "#CC79A780",  # Magenta/Rose (anciennement "en")
-  "#F0E44280",  # Jaune (anciennement "de")
-  "#E69F0080",  # Orange
-  "#76428A80"   # Bleu ciel
-)
-
-
-p <- gg + 
-  geom_point(data = k_metric_summary %>% 
-               filter((K == 30 & preprocessing %in% c("30", "15") & Metric == "FREX") |
-                      (K == 40 & preprocessing %in% c("5") & Metric == "Cohérence") |
-                      (K == 50 & preprocessing %in% c("30") & Metric == "FREX")),
+  # points sélectionnés = cercles blancs
+  geom_point(data = selected_points,
              aes(K, Value),
-             color = "red",
-             size = 3) +
-  scale_color_manual(values = colors) 
-
+             inherit.aes = FALSE,
+             shape = 21, fill = "white", colour = "black",
+             size = 5, stroke = 1.1) +
+  geom_text_repel(data = selected_points,
+                  aes(K, Value, label = label_choice),
+                  inherit.aes = FALSE,
+                  size = 3.1, colour = "black",
+                  segment.color = "grey40", max.overlaps = 20)
 
 print(p)
-
 ```

@@ -13,41 +13,35 @@
 # same but only articles 
 articles <- documents %>% filter(str_detect(type, "varia|spécial") | type == "")
 
+authors <- authors %>%
+  mutate(gender = factor(gender, levels = c("H", "F")))
 
+
+# tous documents sauf articles
 p1 <- authors %>%
   filter(!is.na(gender),
          !id_document %in% articles$id) %>%
   group_by(gender, year) %>%
-  summarise(n = n()) %>%
-  ungroup %>%
-  ggplot(aes(
-    x = as.integer(year),
-    y = n,
-    fill = gender
-  )) +
-  geom_col() +
+  summarise(n = n(), .groups = "drop") %>%
+  ggplot(aes(x = as.integer(year), y = n, fill = gender)) +
+  geom_col(colour = "black") +
   labs(x = "Année", y = "Nombre d'auteurs", fill = "Genre") +
-  theme_article_scico() 
+  theme_article_custom()
 
+# seulement les articles
 p2 <- authors %>%
   filter(!is.na(gender),
-         id_document %in% articles$id) %>% 
+         id_document %in% articles$id) %>%
   group_by(gender, year) %>%
-  reframe(n = n()) %>%
-  ungroup %>%
-  ggplot(aes(
-    x = as.integer(year),
-    y = n,
-    fill = gender
-  )) +
-  geom_col() +
+  summarise(n = n(), .groups = "drop") %>%
+  ggplot(aes(x = as.integer(year), y = n, fill = gender)) +
+  geom_col(colour = "black") +
   labs(x = "Année", y = "Nombre d'auteurs", fill = "Genre") +
-  theme_article_scico() 
+  theme_article_custom()
+
 
 print(p1)
 print(p2)
-
-
 ```
 
 

@@ -17,9 +17,9 @@ p <- documents %>%
   count(year, type) %>%
   mutate(tooltip = paste("Année:", year, "<br>Nombre de documents:", n, "<br>Type:", type)) %>%
   ggplot(aes(x = as.integer(year), y = n, fill = type, text = tooltip)) + 
-  geom_col() +
+  geom_col(colour = "black") +
   labs(x = "Année", y = "Nombre de documents", fill = "") + 
-  theme_article_scico() 
+  theme_article_custom() 
 
 print(p)
 ```

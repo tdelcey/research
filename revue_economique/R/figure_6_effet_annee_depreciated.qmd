@@ -1,0 +1,456 @@
+## Figure 6: effet de l'année sur la prévalence espérée 
+
+Le code ci-dessous regroupe les prévalences espérées selon l'année par méta-thématiques. Nous utilisons une version personalisée de `stm::plot.estimateEffect` pour extraire les effets de l'année sur la prévalence espérée des thématiques. Ensuite, nous utilisons `ggplot2` pour visualiser ces effets. 
+
+```{r}
+#| label: extract_estimate_effect
+#| echo: TRUE
+#| eval: FALSE
+#| warning: FALSE
+
+structured_topic_model <- readRDS(here(
+  private_data_path,
+  "structured_topic_model.rds"
+))
+estimate_effect <- readRDS(here::here(
+  clean_corpus_path,
+  "estimate_effect_Local.rds"
+))
+
+ee_date <- extract_ee(
+  estimate_effect,
+  "year",
+  structured_topic_model,
+  method = "continuous",
+  npoints = 500
+)
+
+# save also the top terms probability for each topic
+
+label_topic <- labelTopics(structured_topic_model, n = 5)
+
+top_terms_prob <- label_topic %>%
+  .[[1]] %>%
+  as_tibble() %>%
+  reframe(topic_label_prob = pmap_chr(., ~ paste(c(...), collapse = ", "))) %>%
+  mutate(topic = row_number())
+
+# temp saving
+saveRDS(ee_date, here::here(clean_corpus_path, "ee_date.rds"))
+saveRDS(top_terms_prob, here::here(clean_corpus_path, "top_terms_prob.rds"))
+
+
+# load estimators
+# estimate_effect <- readRDS(here::here(clean_corpus_path, "estimate_effect_Local.rds"))
+# ee_date <- readRDS(here::here(clean_corpus_path, "ee_date.rds"))
+# top_terms_prob <- readRDS(here::here(clean_corpus_path, "top_terms_prob.rds"))
+
+ee_date <- ee_date %>%
+  left_join(top_terms_prob, by = "topic") %>%
+  select(-label) %>%
+  left_join(metatopics %>% select(topic, label))
+
+list_metatopics <- metatopics %>% distinct(champ) %>% pull()
+
+list_plots <- list()
+
+for (metatopic in list_metatopics) {
+  metatopic <- metatopic %>% as.character()
+
+  list_topics <- metatopics %>%
+    filter(champ == metatopic) %>%
+    pull(topic)
+
+  # Filter data for the topic
+  topic_per_year <- ee_date %>%
+    filter(topic == list_topics)
+
+  # Points 1x/an
+  topic_marks <- topic_per_year %>%
+    mutate(year_floor = floor(covariate.value)) %>%
+    group_by(topic, year_floor) %>%
+    slice(1) %>%
+    ungroup()
+
+  # Generate the plot
+  gg <- topic_per_year %>%
+    ggplot(aes(
+      x = covariate.value,
+      y = estimate,
+      shape = paste0("Thématique ", topic, " : ", label)
+    )) +
+    geom_line(colour = "black", linewidth = 0.3) +
+    geom_point(data = topic_marks, size = 2, stroke = 0.7, colour = "black") +
+    geom_hline(yintercept = 0, linetype = "dashed") +
+    labs(
+      x = "Valeur de la variable année",
+      y = "Prévalence espérée",
+      linetype = NULL,
+      color = NULL,
+      shape = NULL
+    ) +
+    theme_article_custom(base_size = 14) +
+    theme(
+      legend.position = "bottom",
+      # Positionne la légende en bas du graphique
+      legend.text = element_text(size = 10)
+    ) +
+    guides(shape = guide_legend(nrow = ceiling(length(list_topics) / 2)))
+
+  # Add the plot to the list
+  list_plots[[metatopic]] <- gg
+}
+
+saveRDS(list_plots, here::here(clean_corpus_path, "list_plots_year_effect.rds"))
+
+```
+
+
+### Analyse historique
+
+```{r}
+#| echo: TRUE
+#| warning: FALSE
+#| label: figure_6_year_effect_hpe
+
+
+list_plots <- readRDS(here::here(clean_corpus_path, "list_plots_year_effect.rds"))
+
+p <- list_plots[['Analyse historique']] 
+
+print(p)
+```
+### Microéconomie
+
+```{r}
+#| echo: TRUE
+#| warning: FALSE
+#| label: figure_6_year_effect_micro
+
+p <- list_plots[['Microéconomie']] 
+print(p)
+```
+
+### Economie internationale 
+
+
+```{r}
+#| echo: TRUE
+#| warning: FALSE
+#| label: figure_6_year_effect_international
+
+p <- list_plots[['Economie internationale']] 
+
+print(p)
+```
+
+### Macroéconomie
+
+```{r}
+#| echo: TRUE
+#| warning: FALSE
+#| label: figure_6_year_effect_macro
+
+ee_date <- readRDS(here::here(clean_corpus_path, "ee_date.rds"))
+top_terms_prob <- readRDS(here::here(clean_corpus_path, "top_terms_prob.rds"))
+
+ee_date <- ee_date %>%
+  left_join(top_terms_prob, by = "topic") %>%
+  select(-label) %>%
+  left_join(metatopics %>% select(topic, label))
+
+list_topics_macro <- metatopics %>%
+  filter(champ %in% "Macroéconomie") %>%
+  pull(topic)
+
+
+list_topics_macro_tradi <- c(14, 20, 21, 25, 29, 5)
+list_topics_macro_modern <- list_topics_macro %>% setdiff(list_topics_macro_tradi)
+
+topic_per_year_facet <- ee_date %>%
+  select(-label) %>%
+  filter(topic %in% list_topics_macro) %>%
+  left_join(metatopics, by = "topic") %>%
+  mutate(
+    facet = ifelse(
+      topic %in% list_topics_macro_tradi,
+      "Thématiques traditionnelles",
+      "Thématiques émergentes"
+    ),
+    facet = factor(
+      facet,
+      levels = c("Thématiques traditionnelles", "Thématiques émergentes")
+    ),
+    topic = factor(
+      topic,
+      levels = c(list_topics_macro_tradi, list_topics_macro_modern)
+    )
+  )
+
+# 1. Calcule des bornes Y communes
+ymin <- min(topic_per_year_facet$estimate, na.rm = TRUE)
+ymax <- max(topic_per_year_facet$estimate, na.rm = TRUE)
+
+# 2. Sous-ensembles
+df_tradi <- topic_per_year_facet %>% filter(facet == "Thématiques traditionnelles")
+df_emerg <- topic_per_year_facet %>% filter(facet == "Thématiques émergentes")
+
+# 1. Séparation des sous-ensembles
+df_tradi_sel <- df_tradi %>% filter(topic %in% c(14, 21, 29))
+df_tradi_other <- df_tradi %>% filter(!topic %in% c(14, 21, 29))
+df_emerg_sub <- df_emerg
+
+# 2. Points : un par an
+df_tradi_sel_marks <- df_tradi_sel %>%
+  mutate(year_floor = floor(covariate.value)) %>%
+  group_by(topic, year_floor) %>% slice(1) %>% ungroup()
+
+df_tradi_other_marks <- df_tradi_other %>%
+  mutate(year_floor = floor(covariate.value)) %>%
+  group_by(topic, year_floor) %>% slice(1) %>% ungroup()
+
+df_emerg_marks <- df_emerg_sub %>%
+  mutate(year_floor = floor(covariate.value)) %>%
+  group_by(topic, year_floor) %>% slice(1) %>% ungroup()
+
+# 3. Palette de formes assez longue
+shapes_vec <- c(16,17,15,3,4,8,7,9,10,12)
+
+# ---- P1 : thématiques 14, 21, 29 ----
+p1 <- ggplot(df_tradi_sel, aes(
+  x = covariate.value, y = estimate,
+  group = paste0("Thématique ", topic, " : ", label),
+  shape = paste0("Thématique ", topic, " : ", label)
+)) +
+  geom_line(colour = "black", linewidth = 0.3) +
+  geom_point(data = df_tradi_sel_marks,
+             size = 2, stroke = 0.9, colour = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = shapes_vec) +
+  scale_y_continuous(limits = c(ymin, ymax)) +
+  labs(x = "Année", y = "Prévalence espérée", shape = "") +
+  theme_article_custom(base_size = 15) +
+  guides(shape = guide_legend(ncol = 1))
+
+# ---- P2 : autres traditionnelles ----
+p2 <- ggplot(df_tradi_other, aes(
+  x = covariate.value, y = estimate,
+  group = paste0("Thématique ", topic, " : ", label),
+  shape = paste0("Thématique ", topic, " : ", label)
+)) +
+  geom_line(colour = "black", linewidth = 0.3) +
+  geom_point(data = df_tradi_other_marks,
+             size = 2, stroke = 0.9, colour = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = shapes_vec) +
+  scale_y_continuous(limits = c(ymin, ymax)) +
+  labs(x = "Année", y = NULL, shape = "") +
+  theme_article_custom(base_size = 15) +
+  guides(shape = guide_legend(ncol = 1))
+
+# ---- P3 : émergentes ----
+p3 <- ggplot(df_emerg_sub, aes(
+  x = covariate.value, y = estimate,
+  group = paste0("Thématique ", topic, " : ", label),
+  shape = paste0("Thématique ", topic, " : ", label)
+)) +
+  geom_line(colour = "black", linewidth = 0.3) +
+  geom_point(data = df_emerg_marks,
+             size = 2, stroke = 0.9, colour = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = shapes_vec) +
+  scale_y_continuous(limits = c(ymin, ymax)) +
+  labs(x = "Année", y = NULL, shape = NULL) +
+  theme_article_custom(base_size = 15) +
+  guides(shape = guide_legend(ncol = 1))
+
+# assembler les 3 plots
+print(p1)
+print(p2)
+print(p3)
+
+```
+
+### Expertise économique
+
+```{r}
+#| echo: TRUE
+#| warning: FALSE
+#| label: figure_6_year_effect_ee
+
+ee_date <- readRDS(here::here(clean_corpus_path, "ee_date.rds"))
+top_terms_prob <- readRDS(here::here(clean_corpus_path, "top_terms_prob.rds"))
+
+ee_date <- ee_date %>%
+  left_join(top_terms_prob, by = "topic") %>%
+  select(-label) %>%
+  left_join(metatopics %>% select(topic, label))
+
+list_topics_ee <- metatopics %>%
+  filter(champ %in% "Expertise économique") %>%
+  pull(topic)
+
+
+list_topics_ee_tradi <- c(4, 7, 16)
+list_topics_ee_modern <- list_topics_ee %>% setdiff(list_topics_ee_tradi)
+
+
+topic_per_year_facet <- ee_date %>%
+  select(-label) %>%
+  filter(topic %in% list_topics_ee) %>%
+  left_join(metatopics, by = "topic") %>%
+  mutate(
+    facet = ifelse(
+      topic %in% list_topics_ee_tradi,
+      "Thématiques traditionnelles",
+      "Thématiques émergentes"
+    ),
+    facet = factor(
+      facet,
+      levels = c("Thématiques traditionnelles", "Thématiques émergentes")
+    ),
+    topic = factor(
+      topic,
+      levels = c(list_topics_ee_tradi, list_topics_ee_modern)
+    )
+  )
+
+# bornes Y communes (inchangé)
+ymin <- min(topic_per_year_facet$estimate, na.rm = TRUE)
+ymax <- max(topic_per_year_facet$estimate, na.rm = TRUE)
+
+# sous-ensembles
+df_tradi <- topic_per_year_facet %>% filter(facet == "Thématiques traditionnelles")
+df_emerg_selected <- topic_per_year_facet %>%
+  filter(facet == "Thématiques émergentes", topic %in% c(17, 27, 30))
+
+df_emerg_other <- topic_per_year_facet %>%
+  filter(facet == "Thématiques émergentes", !topic %in% c(17, 27, 30))
+
+# 1 point / an pour chaque sous-ensemble
+df_tradi_marks <- df_tradi %>%
+  mutate(year_floor = floor(covariate.value)) %>%
+  group_by(topic, year_floor) %>% slice(1) %>% ungroup()
+
+df_emerg_sel_marks <- df_emerg_selected %>%
+  mutate(year_floor = floor(covariate.value)) %>%
+  group_by(topic, year_floor) %>% slice(1) %>% ungroup()
+
+df_emerg_oth_marks <- df_emerg_other %>%
+  mutate(year_floor = floor(covariate.value)) %>%
+  group_by(topic, year_floor) %>% slice(1) %>% ungroup()
+
+# palette de formes suffisamment longue
+shapes_vec <- c(16, 17, 15, 3, 4, 8, 7, 9, 10, 12)
+
+# ---- P1 : thématiques traditionnelles ----
+p1 <- ggplot(df_tradi, aes(
+  x = covariate.value, y = estimate,
+  group = paste0("Thématique ", topic, " : ", label),
+  shape = paste0("Thématique ", topic, " : ", label)
+)) +
+  geom_line(colour = "black", linewidth = 0.3) +
+  geom_point(data = df_tradi_marks,
+             size = 2, stroke = 0.9, colour = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = shapes_vec) +
+  scale_y_continuous(limits = c(ymin, ymax)) +
+  labs(x = "Année", y = "Prévalence espérée", shape = "") +
+  theme_article_custom(base_size = 15) + 
+   guides(shape = guide_legend(ncol = 1))
+
+# ---- P2 : émergentes sélectionnées ----
+p2 <- ggplot(df_emerg_selected, aes(
+  x = covariate.value, y = estimate,
+  group = paste0("Thématique ", topic, " : ", label),
+  shape = paste0("Thématique ", topic, " : ", label)
+)) +
+  geom_line(colour = "black", linewidth = 0.3) +
+  geom_point(data = df_emerg_sel_marks,
+             size = 2, stroke = 0.9, colour = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = shapes_vec) +
+  scale_y_continuous(limits = c(ymin, ymax)) +
+  labs(x = "Année", y = NULL, shape = NULL) +
+  theme_article_custom(base_size = 15) + 
+  guides(shape = guide_legend(ncol = 1))
+
+# ---- P3 : autres émergentes ----
+p3 <- ggplot(df_emerg_other, aes(
+  x = covariate.value, y = estimate,
+  group = paste0("Thématique ", topic, " : ", label),
+  shape = paste0("Thématique ", topic, " : ", label)
+)) +
+  geom_line(colour = "black", linewidth = 0.3) +
+  geom_point(data = df_emerg_oth_marks,
+             size = 2, stroke = 0.9, colour = "black") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_shape_manual(values = shapes_vec) +
+  scale_y_continuous(limits = c(ymin, ymax)) +
+  labs(x = "Année", y = NULL, shape = NULL) +
+  theme_article_custom(base_size = 15) +
+  guides(shape = guide_legend(ncol = 1))
+
+# assembler
+print(p1)
+print(p2)
+print(p3)
+
+```
+
+### Effet de l'année par thématique 
+
+::: {.panel-tabset}
+
+```{r}
+#| include: FALSE
+#| eval: TRUE
+
+list_plot <- list()
+topics <- ee_date$topic %>% unique() %>% sort()
+
+for (selected_topic in topics) {
+  # Filter data for the topic
+  topic_per_year <- ee_date %>%
+    filter(topic == selected_topic)
+  
+  # Generate the plot
+  gg <- topic_per_year %>%
+    ggplot(aes(x = covariate.value)) +
+    geom_line(aes(y = estimate), color = "black") +
+    geom_line(aes(y = ci.lower), color = "black", linetype = "dashed") +
+    geom_line(aes(y = ci.upper), color = "black", linetype = "dashed") +
+    geom_hline(yintercept = 0, linetype = "dotted") +
+    labs(
+      title = paste("Words:", unique(topic_per_year$topic_label)),
+      subtitle = "Intervalle à 95%",
+      x = "Valeur de la variable année",
+      y = "Prévalence espérée",
+    ) +
+    theme_light(base_size = 15) +
+    theme(strip.text = element_text(size = 3))
+
+  list_plot[[glue::glue("year_effect_{selected_topic}.png")]] <- gg
+}
+
+```
+
+```{r}
+#| results: 'asis'
+#| label: figure_year_effect
+
+for (selected_topic in topics) {
+  # Filter data for the topic
+  
+  gg <- list_plot[[glue::glue("year_effect_{selected_topic}.png")]]
+  # Print the graph and a section title
+  cat(glue::glue("\n\n### Topic {selected_topic}\n\n"))
+  print(gg)
+  cat("\n\n")
+}
+
+```
+
+::: 
+
+

@@ -13,9 +13,10 @@ p <- df_text %>%
   mutate(tooltip = paste("Année:", year, "<br>Count:", n)) %>%
   ggplot(aes(x = as.integer(year), y = n, text = tooltip)) +
   geom_col(binwidth = 1,
-           fill = colors[[1]]) +
+           fill = "grey50",
+           color = "black") +
   labs(x = "Année", y = "Nombre de documents par année") +
-  theme_light(base_size = 15) 
+  theme_article_custom(base_size = 14) 
 
 
 print(p)

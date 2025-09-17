@@ -3,176 +3,79 @@
 Le code ci-dessous regroupe les prévalences espérées selon l'année par méta-thématiques. Nous utilisons une version personalisée de `stm::plot.estimateEffect` pour extraire les effets de l'année sur la prévalence espérée des thématiques. Ensuite, nous utilisons `ggplot2` pour visualiser ces effets. 
 
 ```{r}
-#| label: extract_estimate_effect
+#| label: figure_6_facets_list
 #| echo: TRUE
-#| eval: FALSE
 #| warning: FALSE
+#| message: FALSE
 
-# personal tidy extractor of estimate effect object. Insteading of using stm::plot.estimateEffect() to plot the effect of years, we extract simulated betas in a tidy format and we will use in the next chunk ggplot to plot the effect of years. 
+library(dplyr)
+library(ggplot2)
+library(glue)
+library(stringr)
+library(purrr)
 
-extract_ee <- function(x, covariate, model = NULL,
-                                topics = x$topics,
-                                method = "pointestimate",
-                                cov.value1 = NULL, cov.value2 = NULL,
-                                moderator = NULL, moderator.value = NULL,
-                                npoints = 500, nsims = 500, ci.level = .95,
-                                custom.labels = NULL, labeltype = "numbers",
-                                n = 7, frexw = .5) {
-
-  cthis <- stm:::produce_cmatrix(prep = x,
-                                 covariate = covariate,
-                                 method = method,
-                                 cov.value1 = cov.value1,
-                                 cov.value2 = cov.value2,
-                                 moderator = moderator,
-                                 npoints = npoints,
-                                 moderator.value = moderator.value)
-  
-  simbetas <- stm:::simBetas(parameters = x$parameters,
-                             nsims = nsims)
-
-  uvals <- cthis$cdata[[covariate]]
-  offset <- (1 - ci.level) / 2
-  labels <- stm:::createLabels(labeltype = labeltype,
-                               covariate = covariate,
-                               method = method,
-                               cdata = cthis$cdata,
-                               cov.value1 = cov.value1,
-                               cov.value2 = cov.value2,
-                               model = model,
-                               n = n,
-                               topics = x$topics,
-                               custom.labels = custom.labels,
-                               frexw = frexw)
-
-  out <- lapply(topics, function(i) {
-
-    sims <- cthis$cmatrix %*% t(simbetas[[which(x$topics == i)]])
-
-    if (method == "difference") {
-
-      diff <- sims[1, ] - sims[2, ]
-      out_inner <- data.frame(method = method,
-                              topic = i,
-                              covariate = covariate,
-                              covariate.value = paste0(cov.value1, "-", cov.value2),
-                              estimate = mean(diff),
-                              std.error = sd(diff),
-                              ci.level = ci.level,
-                              ci.lower = quantile(diff, offset),
-                              ci.upper = quantile(diff, 1 - offset),
-                              label = labels[which(x$topics == i)])
-
-    } else {
-
-      out_inner <- data.frame(method = method,
-                              topic = i,
-                              covariate = covariate,
-                              covariate.value = uvals,
-                              estimate = apply(sims, 1, mean),
-                              std.error = apply(sims, 1, sd),
-                              ci.level = ci.level,
-                              ci.lower = apply(sims, 1, quantile, probs = offset),
-                              ci.upper = apply(sims, 1, quantile, probs = (1 - offset)),
-                              label = labels[which(x$topics == i)])
-
-    }
-
-    if (!is.null(moderator)) {
-      out_inner$moderator <- moderator
-      out_inner$moderator.value <- moderator.value
-    }
-
-    rownames(out_inner) <- NULL
-    return(out_inner)
-
-  })
-  out <- do.call("rbind", out)
-
-  return(out)
-}
-
-structured_topic_model <- readRDS(here(private_data_path, "structured_topic_model.rds"))
-estimate_effect <- readRDS(here::here(clean_corpus_path, "estimate_effect_Local.rds"))
-
-ee_date <- extract_ee(
-  estimate_effect,
-  "year",
-  structured_topic_model,
-  method = "continuous",
-  npoints = 500)
-
-# save also the top terms probability for each topic
-
-label_topic <- labelTopics(structured_topic_model, n = 5)
-
-top_terms_prob <- label_topic %>% .[[1]] %>%
-  as_tibble() %>%
-  reframe(topic_label_prob = pmap_chr(., ~ paste(c(...), collapse = ", "))) %>%
-  mutate(topic = row_number())
-
-# temp saving 
-saveRDS(ee_date, here::here(clean_corpus_path, "ee_date.rds"))
-saveRDS(top_terms_prob, here::here(clean_corpus_path, "top_terms_prob.rds"))
-
-# load estimators 
-estimate_effect <- readRDS(here::here(clean_corpus_path, "estimate_effect_Local.rds"))
+# --- chargement des objets nécessaires
 ee_date <- readRDS(here::here(clean_corpus_path, "ee_date.rds"))
 top_terms_prob <- readRDS(here::here(clean_corpus_path, "top_terms_prob.rds"))
-
 
 ee_date <- ee_date %>%
   left_join(top_terms_prob, by = "topic") %>%
   select(-label) %>%
-  left_join(metatopics %>% select(topic, label))
+  left_join(metatopics %>% select(topic, label, champ), by = "topic") %>%
+  mutate(facet_lab = paste0(topic, ": ", label))
 
-list_metatopics <- metatopics %>% distinct(champ) %>% pull()
+# Fonction qui renvoie un ggplot pour une métathématique
+make_plot_metachamp <- function(champ_name){
+  df <- ee_date %>% filter(champ == champ_name)
+  if(nrow(df) == 0) return(NULL)
 
-list_plots <- list()
+  ymin <- min(df$estimate, na.rm = TRUE)
+  ymax <- max(df$estimate, na.rm = TRUE)
 
-for (metatopic in list_metatopics) {
-  
-  metatopic <- metatopic %>% as.character()
-  
-  list_topics <- metatopics %>%
-    filter(champ == metatopic) %>%
-    pull(topic)
-  
-  # Filter data for the topic
-  topic_per_year <- ee_date %>%
-    filter(topic == list_topics)
-  
-  # Generate the plot
-  gg <- topic_per_year %>%
-    ggplot(aes(
-      x = covariate.value,
-      color = paste0("Thématique ", topic, " : ", label)
-    ), linewidth = 1) +
-    geom_line(aes(y = estimate), size = 1.5) +
-    # geom_line(aes(y = ci.lower), color = "red", linetype = "dashed") +
-    # geom_line(aes(y = ci.upper), color = "red", linetype = "dashed") +
+  gg <- ggplot(df, aes(x = covariate.value, y = estimate)) +
+    geom_line(linewidth = 0.4, colour = "black") +
     geom_hline(yintercept = 0, linetype = "dashed") +
-    scale_color_brewer(palette = "Paired") +
+    facet_wrap(~ facet_lab, ncol = 3) +
     labs(
-      # title = glue("Meta-thématiques: {metatopic}"),
-      subtile = "Evolution des thématiques",
-      x = "Valeur de la variable année",
+      x = "Année",
       y = "Prévalence espérée",
-      color = ""
+      title = glue("Effet de l'année — {champ_name}")
     ) +
-    theme_light(base_size = 15) +
+    theme_article_custom(base_size = 13) +
     theme(
-      legend.position = "bottom",
-      # Positionne la légende en bas du graphique
-      legend.text = element_text(size = 10)
+      # reduce font size of facet labels
+      strip.text = element_text(size = 9),
+      plot.title = element_text(hjust = 0),
+      #strip.background = element_rect(fill = "white", colour = "black"),
     ) +
-    guides(color = guide_legend(nrow = ceiling(length(list_topics) / 2)))
-  
-  # Add the plot to the list
-  list_plots[[metatopic]] <- gg
-  
+    coord_cartesian(ylim = c(ymin, ymax))
+
+  # calcul hauteur auto
+  n_panels <- df %>% distinct(topic) %>% nrow()
+  ncol_facets <- 3L
+  nrow_facets <- ceiling(n_panels / ncol_facets)
+  height_mm <- nrow_facets * 40 + 20
+
+  slug <- champ_name %>%
+    stringi::stri_trans_general("Latin-ASCII") %>%
+    str_replace_all("[^A-Za-z0-9]+", "_") %>%
+    str_replace("^_|_$", "")
+
+  ggsave(
+    filename = here::here(figures_path, glue("figure_year_effect_{slug}.png")),
+    plot = gg, dpi = 300,
+    width =  180, height = height_mm, units = "mm"
+  )
+
+  return(gg)
 }
 
+# --- génère la liste
+list_metatopics <- ee_date$champ %>% unique() %>% sort()
+
+list_plots <- map(set_names(list_metatopics), make_plot_metachamp)
+
+# --- sauvegarde pour l'annexe en ligne
 saveRDS(list_plots, here::here(clean_corpus_path, "list_plots_year_effect.rds"))
 
 ```
@@ -189,7 +92,6 @@ saveRDS(list_plots, here::here(clean_corpus_path, "list_plots_year_effect.rds"))
 list_plots <- readRDS(here::here(clean_corpus_path, "list_plots_year_effect.rds"))
 
 p <- list_plots[['Analyse historique']] 
-
 
 print(p)
 ```
@@ -224,103 +126,9 @@ print(p)
 #| warning: FALSE
 #| label: figure_6_year_effect_macro
 
-ee_date <- readRDS(here::here(clean_corpus_path, "ee_date.rds"))
-top_terms_prob <- readRDS(here::here(clean_corpus_path, "top_terms_prob.rds"))
+p <- list_plots[['Macroéconomie']]
 
-ee_date <- ee_date %>%
-  left_join(top_terms_prob, by = "topic") %>%
-  select(-label) %>%
-  left_join(metatopics %>% select(topic, label))
-
-list_topics_macro <- metatopics %>%
-  filter(champ %in% "Macroéconomie") %>%
-  pull(topic)
-
-
-list_topics_macro_tradi <- c(14, 20, 21, 25, 29, 5)
-list_topics_macro_modern <- list_topics_macro %>% setdiff(list_topics_macro_tradi)
-
-topic_per_year_facet <- ee_date %>%
-  select(-label) %>%
-  filter(topic %in% list_topics_macro) %>%
-  left_join(metatopics, by = "topic") %>%
-  mutate(
-    facet = ifelse(
-      topic %in% list_topics_macro_tradi,
-      "Thématiques traditionnelles",
-      "Thématiques émergentes"
-    ),
-    facet = factor(
-      facet,
-      levels = c("Thématiques traditionnelles", "Thématiques émergentes")
-    ),
-    topic = factor(
-      topic,
-      levels = c(list_topics_macro_tradi, list_topics_macro_modern)
-    )
-  )
-
-# 1. Calcule des bornes Y communes
-ymin <- min(topic_per_year_facet$estimate, na.rm = TRUE)
-ymax <- max(topic_per_year_facet$estimate, na.rm = TRUE)
-
-# 2. Sous-ensembles
-df_tradi <- topic_per_year_facet %>% filter(facet == "Thématiques traditionnelles")
-df_emerg <- topic_per_year_facet %>% filter(facet == "Thématiques émergentes")
-
-# 3. Graphique traditionnel
-p1 <- ggplot(df_tradi, aes(
-  x = covariate.value,
-  color = paste0("Thématique ", topic, " : ", label)
-)) +
-  geom_line(aes(y = estimate), size = 2) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_brewer(palette = "Paired") +
-  scale_y_continuous(limits = c(ymin, ymax)) +
-  labs(
-    x = "Valeur de la variable année",
-    y = "Prévalence espérée",
-    color = ""
-  ) +
-  theme_light(base_size = 15) +
-  theme(
-    legend.position = "bottom",
-    legend.text = element_text(size = 10),
-    legend.title = element_text(size = 10),
-    legend.key = element_blank(),
-    strip.background = element_rect(colour = "white", fill = "white"),
-    strip.text = element_text(size = 10, color = "black")
-  ) +
-  guides(color = guide_legend(ncol = 1))
-
-# 4. Graphique émergent
-p2 <- ggplot(df_emerg, aes(
-  x = covariate.value,
-  color = paste0("Thématique ", topic, " : ", label)
-)) +
-  geom_line(aes(y = estimate), size = 2) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_brewer(palette = "Paired") +
-  scale_y_continuous(limits = c(ymin, ymax)) +
-  labs(
-    x = "Valeur de la variable année",
-    y = NULL, 
-    color = NULL
-  ) +
-  theme_light(base_size = 15) +
-  theme(
-    legend.position = "bottom",
-    legend.text = element_text(size = 10),
-    legend.title = element_text(size = 10),
-    legend.key = element_blank(),
-    strip.background = element_rect(colour = "white", fill = "white"),
-    strip.text = element_text(size = 10, color = "black")
-  ) +
-  guides(color = guide_legend(ncol = 1))
-
-
-p1 + p2 
-
+print(p)
 
 ```
 
@@ -331,159 +139,11 @@ p1 + p2
 #| warning: FALSE
 #| label: figure_6_year_effect_ee
 
-ee_date <- readRDS(here::here(clean_corpus_path, "ee_date.rds"))
-top_terms_prob <- readRDS(here::here(clean_corpus_path, "top_terms_prob.rds"))
+p <- list_plots[['Expertise économique']]
 
-ee_date <- ee_date %>%
-  left_join(top_terms_prob, by = "topic") %>%
-  select(-label) %>%
-  left_join(metatopics %>% select(topic, label))
-
-list_topics_ee <- metatopics %>%
-  filter(champ %in% "Expertise économique") %>%
-  pull(topic)
-
-
-list_topics_ee_tradi <- c(4, 7, 16)
-list_topics_ee_modern <- list_topics_ee %>% setdiff(list_topics_ee_tradi)
-
-
-topic_per_year_facet <- ee_date %>%
-  select(-label) %>%
-  filter(topic %in% list_topics_ee) %>%
-  left_join(metatopics, by = "topic") %>%
-  mutate(
-    facet = ifelse(
-      topic %in% list_topics_ee_tradi,
-      "Thématiques traditionnelles",
-      "Thématiques émergentes"
-    ),
-    facet = factor(
-      facet,
-      levels = c("Thématiques traditionnelles", "Thématiques émergentes")
-    ),
-    topic = factor(
-      topic,
-      levels = c(list_topics_ee_tradi, list_topics_ee_modern)
-    )
-  )
-
-# 1. Calcule des bornes Y communes
-ymin <- min(topic_per_year_facet$estimate, na.rm = TRUE)
-ymax <- max(topic_per_year_facet$estimate, na.rm = TRUE)
-
-# 2. Sous-ensembles
-df_tradi <- topic_per_year_facet %>% filter(facet == "Thématiques traditionnelles")
-df_emerg <- topic_per_year_facet %>% filter(facet == "Thématiques émergentes")
-
-# 3. Graphique traditionnel
-p1 <- ggplot(df_tradi, aes(
-  x = covariate.value,
-  color = paste0("Thématique ", topic, " : ", label)
-)) +
-  geom_line(aes(y = estimate), size = 2) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_brewer(palette = "Paired") +
-  scale_y_continuous(limits = c(ymin, ymax)) +
-  labs(
-    x = "Valeur de la variable année",
-    y = "Prévalence espérée",
-    color = ""
-  ) +
-  theme_light(base_size = 15) +
-  theme(
-    legend.position = "bottom",
-    legend.text = element_text(size = 10),
-    legend.title = element_text(size = 10),
-    legend.key = element_blank(),
-    strip.background = element_rect(colour = "white", fill = "white"),
-    strip.text = element_text(size = 10, color = "black")
-  ) +
-  guides(color = guide_legend(ncol = 1))
-
-# 4. Graphique émergent
-p2 <- ggplot(df_emerg, aes(
-  x = covariate.value,
-  color = paste0("Thématique ", topic, " : ", label)
-)) +
-  geom_line(aes(y = estimate), size = 2) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  scale_color_brewer(palette = "Paired") +
-  scale_y_continuous(limits = c(ymin, ymax)) +
-  labs(
-    x = "Valeur de la variable année",
-    y = NULL, 
-    color = NULL
-  ) +
-  theme_light(base_size = 15) +
-  theme(
-    legend.position = "bottom",
-    legend.text = element_text(size = 10),
-    legend.title = element_text(size = 10),
-    legend.key = element_blank(),
-    strip.background = element_rect(colour = "white", fill = "white"),
-    strip.text = element_text(size = 10, color = "black")
-  ) +
-  guides(color = guide_legend(ncol = 1))
-
-
-p1 + p2 
+print(p)
 
 ```
 
-### Effet de l'année par thématique 
-
-::: {.panel-tabset}
-
-```{r}
-#| include: FALSE
-#| eval: TRUE
-
-list_plot <- list()
-topics <- ee_date$topic %>% unique() %>% sort()
-
-for (selected_topic in topics) {
-  # Filter data for the topic
-  topic_per_year <- ee_date %>%
-    filter(topic == selected_topic)
-  
-  # Generate the plot
-  gg <- topic_per_year %>%
-    ggplot(aes(x = covariate.value)) +
-    geom_line(aes(y = estimate), color = "red") +
-    geom_line(aes(y = ci.lower), color = "red", linetype = "dashed") +
-    geom_line(aes(y = ci.upper), color = "red", linetype = "dashed") +
-    geom_hline(yintercept = 0, linetype = "dashed") +
-    labs(
-      title = paste("Words:", unique(topic_per_year$topic_label)),
-      subtitle = "Intervalle à 95%",
-      x = "Valeur de la variable année",
-      y = "Prévalence espérée",
-    ) +
-    theme_light(base_size = 15) +
-    theme(strip.text = element_text(size = 3))
-
-  list_plot[[glue::glue("year_effect_{selected_topic}.png")]] <- gg
-}
-
-```
-
-```{r}
-#| results: 'asis'
-#| label: figure_year_effect
-
-for (selected_topic in topics) {
-  # Filter data for the topic
-  
-  gg <- list_plot[[glue::glue("year_effect_{selected_topic}.png")]]
-  # Print the graph and a section title
-  cat(glue::glue("\n\n### Topic {selected_topic}\n\n"))
-  print(gg)
-  cat("\n\n")
-}
-
-```
-
-::: 
 
 
