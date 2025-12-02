@@ -56,7 +56,12 @@ p <- ggplot(k_metric_summary,
                   aes(K, Value, label = label_choice),
                   inherit.aes = FALSE,
                   size = 3.1, colour = "black",
-                  segment.color = "grey40", max.overlaps = 20)
+                  segment.color = "grey40", max.overlaps = 20,
+                  # move away from points taking account of y value
+                  nudge_y = ifelse(selected_points$Metric == "Cohérence", 2, 0.1),
+                  nudge_x = ifelse(selected_points$Metric == "Cohérence", 3, -3)) 
 
+
+# ggsave(plot = p, filename = here(figures_path, "figure_11_coherence_exclusivity.png"), dpi = 300, width = 8, height = 5)
 print(p)
 ```

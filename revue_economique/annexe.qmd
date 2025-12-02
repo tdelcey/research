@@ -23,7 +23,7 @@ source(here::here("revue_economique", "R", "_paths_and_packages.R"))
 source(here::here("revue_economique", "R", "_functions.R"))
 ```
 
-Dans cette annexe, nous détaillons la construction de la base de données et nous présentons les codes utilisés pour les analyses. Hormis les données relatives aux textes entiers et aux citations qui sont confidentielles, les données sont disponibles dans le dépôt [https://github.com/tdelcey/research/tree/main/fama_1970](https://github.com/tdelcey/research/tree/main/fama_1970) du projet et le Zenodo. Les codes utilisés pour chaque analyse (transformation des données et visualisations) peuvent être déroulés en cliquant sur les boutons "Afficher le code". Ils peuvent aussi être consultés directement sur le dépôt [GitHub](https://github.com/tdelcey/research/tree/main/revue_economique) du projet.
+Dans cette annexe, nous détaillons la construction de la base de données et nous présentons les codes utilisés pour les analyses. Les codes utilisés pour chaque analyse (transformation des données et visualisations) peuvent être déroulés en cliquant sur les boutons "Afficher le code". Ils peuvent aussi être consultés directement sur le dépôt [GitHub](https://github.com/tdelcey/research/tree/main/revue_economique) du projet. Hormis les données relatives aux textes entiers et aux citations qui sont fermés, les tables utilisées sont disponibles dans le dossier `data` du dépôt GitHub.
 
 # Données
 
@@ -41,26 +41,26 @@ Dans cette annexe, nous détaillons la construction de la base de données et no
 
 # Figures
 
-{{< include R/figure_1_documents_distribution.qmd >}}
+{{< include R/figure_documents_distribution.qmd >}}
 
-{{< include R/figure_2_co-ecritures.qmd >}}
+{{< include R/figure_co-ecritures.qmd >}}
 
-{{< include R/figure_3_editeurs.qmd >}}
+{{< include R/figure_editeurs.qmd >}}
 
-{{< include R/figure_4_auteurs_genre.qmd >}}
+{{< include R/figure_auteurs_genre.qmd >}}
 
-{{< include R/figure_5_metathematiques.qmd >}}
+{{< include R/figure_metathematiques.qmd >}}
 
-{{< include R/figure_6_effet_annee.qmd >}}
+{{< include R/figure_effet_annee.qmd >}}
 
-{{< include R/figure_7_langues.qmd >}}
+{{< include R/figure_langues.qmd >}}
 
-{{< include R/figure_8_citation.qmd >}}
+{{< include R/figure_citation.qmd >}}
 
-{{< include R/figure_9_effet_genre.qmd >}}
+{{< include R/figure_effet_genre.qmd >}}
 
-{{< include R/figure_10_distribution_textes.qmd >}}
+{{< include R/figure_distribution_textes.qmd >}}
 
-{{< include R/figure_11_estimer_k.qmd >}}
+{{< include R/figure_estimer_k.qmd >}}
 
-{{< include R/figure_12_moyenne_effet_annee.qmd >}}
+{{< include R/figure_moyenne_effet_annee.qmd >}}

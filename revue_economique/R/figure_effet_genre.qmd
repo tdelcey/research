@@ -64,9 +64,17 @@ df_pos <- df_reg %>% filter(effect_group == "Effet positif")
 df_neg <- df_reg %>% filter(effect_group == "Effet négatif")
 df_ns  <- df_reg %>% filter(effect_group == "Non significatif au seuil de 90 %")
 
-p_pos <- plot_reg_group(df_pos, "Effets positifs (au moins une femme)")
-p_neg <- plot_reg_group(df_neg, "Effets négatifs (au moins une femme)")
-p_ns  <- plot_reg_group(df_ns, "Non significatifs")
+p_pos <- plot_reg_group(df_pos, "Effets positifs (au moins une femme)") + 
+  # réduire la taille du titre 
+  theme(plot.title = element_text(size = 15, hjust = 0))
+
+p_neg <- plot_reg_group(df_neg, "Effets négatifs (au moins une femme)") +
+  # réduire la taille du titre 
+  theme(plot.title = element_text(size = 15, hjust = 0))
+
+p_ns  <- plot_reg_group(df_ns, "Non significatifs") +
+  # réduire la taille du titre 
+  theme(plot.title = element_text(size = 15, hjust = 0))
 
 # Afficher
 print(p_pos) 
